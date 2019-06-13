@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net/http"
+	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -20,13 +22,12 @@ type Response struct {
 }
 
 type ErrInfo struct {
-	Code    int    `json:"code"`
+	Code    string `json:"code"`
 	Message string `json:"message"`
 	Data    string `json:"data"`
 }
 
 func (u *Util) GetBlockHeight() (height string, err error) {
-	fmt.Println("GetBlockHeight -----------")
 	url := u.BaseURL + "/chain"
 
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
@@ -39,13 +40,18 @@ func (u *Util) GetBlockHeight() (height string, err error) {
 	}
 	fmt.Println("GetBlockHeight", resp)
 
-	b, ok := resp.Result["Height"].(int)
+	h := resp.Result["Height"]
+
+	fmt.Printf(`resp.Result["Height"] %v `, h)
+	fmt.Println(`resp.Result["Height"] reflect.TypeOf(h) `, reflect.TypeOf(h))
+	reflect.TypeOf(h)
+	b, ok := h.(float64)
 	if ok {
 		fmt.Println(b)
-		return string(b), nil
+		return strconv.FormatFloat(b, 'f', -1, 64), nil
 	}
 
-	return "", nil
+	return "1", nil
 }
 
 func (u *Util) GetBlockInfo(height string) (*Response, error) {
@@ -99,12 +105,10 @@ func (u *Util) apiGet(url string) (*Response, error) {
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(body))
 	err = json.Unmarshal(body, res)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("res", res)
 	return res, nil
 }
 
