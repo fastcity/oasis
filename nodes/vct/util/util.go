@@ -15,8 +15,8 @@ type Util struct {
 }
 
 type Response struct {
-	Result map[string]string `json:"result"`
-	Error  ErrInfo           `json:"error"`
+	Result map[string]interface{} `json:"result"`
+	Error  ErrInfo                `json:"error"`
 }
 
 type ErrInfo struct {
@@ -39,7 +39,13 @@ func (u *Util) GetBlockHeight() (height string, err error) {
 	}
 	fmt.Println("GetBlockHeight", resp)
 
-	return resp.Result["Height"], nil
+	b, ok := resp.Result["Height"].(int)
+	if ok {
+		fmt.Println(b)
+		return string(b), nil
+	}
+
+	return "", nil
 }
 
 func (u *Util) GetBlockInfo(height string) (*Response, error) {
@@ -120,12 +126,4 @@ func (u *Util) apiPost(url, requestBody string) (*Response, error) {
 	}
 
 	return res, nil
-}
-
-func jsonString(body []byte,res interface) (interface, error) {
-resp,	err := json.Unmarshal(body, res)
-	if err != nil {
-		return resp, err
-	}
-	return resp, nil
 }
