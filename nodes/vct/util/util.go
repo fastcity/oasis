@@ -1,16 +1,17 @@
 package util
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
 	"net/http"
-	"reflect"
-	"strconv"
 	"strings"
+
+	"github.com/json-iterator/go"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type Util struct {
 	BaseURL string
@@ -22,43 +23,58 @@ type Response struct {
 }
 
 type ErrInfo struct {
-	Code    string `json:"code"`
+	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    string `json:"data"`
 }
 
-func (u *Util) GetBlockHeight() (height string, err error) {
+// GetBlockHeight 获取块高
+func (u *Util) GetBlockHeight() (height interface{}, err error) {
 	url := u.BaseURL + "/chain"
 
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
-	resp, err := u.apiGet(url)
+	body, err := u.apiGet(url)
 	if err != nil {
-		return "", err
+		return "-1", err
 	}
+	resp := &Response{}
+	err = json.Unmarshal(body, resp)
+	if err != nil {
+		return "-1", err
+	}
+	// return res, nil
 	if resp.Error.Message != "" {
 		return "", errors.New(resp.Error.Message)
 	}
 	fmt.Println("GetBlockHeight", resp)
 
-	h := resp.Result["Height"]
+	return resp.Result["Height"], nil
 
-	fmt.Printf(`resp.Result["Height"] %v `, h)
-	fmt.Println(`resp.Result["Height"] reflect.TypeOf(h) `, reflect.TypeOf(h))
-	reflect.TypeOf(h)
-	b, ok := h.(float64)
-	if ok {
-		fmt.Println(b)
-		return strconv.FormatFloat(b, 'f', -1, 64), nil
-	}
+	// fmt.Println(`resp.Result["Height"] reflect.TypeOf(h) `, reflect.TypeOf(h))
+	// b, ok := h.(float64)
+	// if ok {
+	// 	fmt.Println(b)
+	// 	return strconv.FormatFloat(b, 'f', -1, 64), nil
+	// }
 
-	return "1", nil
+	// return "-1", nil
+
+	// return resp.Result["Height"], nil
 }
 
 func (u *Util) GetBlockInfo(height string) (*Response, error) {
 	url := u.BaseURL + "/chain/blocks/" + height
 
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
-	return u.apiGet(url)
+	// return u.apiGet(url)
+	resp := &Response{}
+	body, err := u.apiGet(url)
+	if err != nil {
+		return resp, err
+	}
+
+	err = json.Unmarshal(body, resp)
+	return resp, err
 }
 
 // createTransactionData 创建未签名事务
@@ -95,8 +111,8 @@ func isEmpty(str string) bool {
 	return false
 }
 
-func (u *Util) apiGet(url string) (*Response, error) {
-	res := &Response{}
+func (u *Util) apiGet(url string) ([]byte, error) {
+	// res := &Response{}
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -105,11 +121,12 @@ func (u *Util) apiGet(url string) (*Response, error) {
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
-	err = json.Unmarshal(body, res)
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
+	return body, err
+	// err = json.Unmarshal(body, res)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// return res, nil
 }
 
 func (u *Util) apiPost(url, requestBody string) (*Response, error) {
