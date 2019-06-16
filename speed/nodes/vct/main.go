@@ -22,10 +22,11 @@ import (
 )
 
 var (
-	chain string
-	env   string
-	json  = jsoniter.ConfigCompatibleWithStandardLibrary
-	db    *dbs.Conn
+	chain              string
+	env                string
+	json               = jsoniter.ConfigCompatibleWithStandardLibrary
+	db                 *dbs.Conn
+	currentBlockNumber = 0
 )
 
 // Result 返回结果
@@ -144,7 +145,6 @@ func InitViper(envprefix string, filename string, configPath ...string) error {
 }
 
 func initLatestBlockNumber() int {
-	// db := &dbs.Conn{}
 
 	collection := db.GetCollection("Info")
 
@@ -163,4 +163,29 @@ func initLatestBlockNumber() int {
 	return 0
 	// 	const info = this.db.models.Info.findOne()
 	// 	this.latestBlockNumber = info ? info.height + 1 : 0
+}
+
+func isNewBlockAvalible(number int64) {
+
+	const block = getBlockCount()
+	if block.result {
+		const top = block.result.Height // 最新的高度
+		logger.debug(`get astro 最新区块高度:${top}； 开始查询： ${number}`)
+		return top > number
+
+	}
+	logger.error(`get astro 最新区块高度 出错。 当前打算查询块： ${number}`)
+	return false
+}
+
+func getBlockCount() {
+	u := util.Util{BaseURL: "http://127.0.0.1:7080/api/v1"}
+
+	h, err := u.GetBlockHeight()
+	if err != nil {
+		fmt.Println("--------------err", err)
+		return -1
+	}
+
+	return h
 }
