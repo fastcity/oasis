@@ -25,6 +25,7 @@ var (
 	chain string
 	env   string
 	json  = jsoniter.ConfigCompatibleWithStandardLibrary
+	db    *dbs.Conn
 )
 
 // Result 返回结果
@@ -49,6 +50,12 @@ func main() {
 	host := viper.GetString("service.host")
 	port := viper.GetString("service.port")
 	router(host + ":" + port)
+
+	db = dbs.New("127.0.01", 27017)
+	err := db.GetConn()
+	if err != nil {
+		fmt.Println("connect mongo error", err)
+	}
 }
 
 func router(url string) {
@@ -136,9 +143,9 @@ func InitViper(envprefix string, filename string, configPath ...string) error {
 
 }
 
-func initLatestBlockNumber() {
-	db := &dbs.Conn{}
-	db.GetConn()
+func initLatestBlockNumber() int {
+	// db := &dbs.Conn{}
+
 	collection := db.GetCollection("Info")
 
 	result := &models.Info{}

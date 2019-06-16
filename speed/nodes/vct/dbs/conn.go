@@ -10,8 +10,12 @@ import (
 
 type Conn struct {
 	Host string
-	port int
+	Port int
 	*mongo.Client
+}
+
+func New(host string, port int) *Conn {
+	return &Conn{Host: host, Port: port}
 }
 
 func (con *Conn) GetConn() error {
