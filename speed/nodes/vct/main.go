@@ -1,7 +1,7 @@
 package main
 
 import (
-	"century/oasis/nodes/vct/util"
+	"century/oasis/speed/nodes/vct/util"
 	"flag"
 	"fmt"
 	"math/big"
@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	// "github.com/Shopify/sarama"
 	"github.com/json-iterator/go"
 	"github.com/spf13/viper"
+	// "century/oasis/speed/vct/db"
 )
 
 var (
@@ -127,4 +129,17 @@ func InitViper(envprefix string, filename string, configPath ...string) error {
 	viper.SetConfigName(filename) // Name of config file (without extension)
 	return viper.ReadInConfig()   // Find and read the config file
 
+}
+
+func initLatestBlockNumber() {
+	// 	dbs.GetCollection("Info")
+
+	// filter := bson.M{}
+	// ctx, _ = context.WithTimeout(context.Background(), 5*time.Second)
+	// err = collection.FindOne(ctx, filter).Decode(&result)
+	// if err != nil {
+	//     log.Fatal(err)
+	// }
+	// 	const info = this.db.models.Info.findOne()
+	// 	this.latestBlockNumber = info ? info.height + 1 : 0
 }

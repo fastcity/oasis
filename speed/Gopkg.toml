@@ -24,13 +24,19 @@
 #   go-tests = true
 #   unused-packages = true
 
-[[constraint]]
-  branch = "master"
-  name = "github.com/json-iterator/go"
-  
-
-
 
 [prune]
   go-tests = true
   unused-packages = true
+
+[[constraint]]
+  name = "go.mongodb.org/mongo-driver"
+  version = "1.0.3"
+
+[[constraint]]
+  name = "github.com/Shopify/sarama"
+  version = "1.22.1"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/json-iterator/go"
