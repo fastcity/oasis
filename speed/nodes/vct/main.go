@@ -1,7 +1,10 @@
 package main
 
 import (
+	"century/oasis/speed/nodes/vct/dbs"
+	"century/oasis/speed/nodes/vct/dbs/models"
 	"century/oasis/speed/nodes/vct/util"
+	"context"
 	"flag"
 	"fmt"
 	"math/big"
@@ -9,10 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	// "github.com/Shopify/sarama"
 	"github.com/json-iterator/go"
 	"github.com/spf13/viper"
+	"go.mongodb.org/mongo-driver/bson"
 	// "century/oasis/speed/vct/db"
 )
 
@@ -132,14 +137,23 @@ func InitViper(envprefix string, filename string, configPath ...string) error {
 }
 
 func initLatestBlockNumber() {
-	// 	dbs.GetCollection("Info")
+	db := &dbs.Conn{}
+	db.GetConn()
+	collection := db.GetCollection("Info")
 
-	// filter := bson.M{}
-	// ctx, _ = context.WithTimeout(context.Background(), 5*time.Second)
-	// err = collection.FindOne(ctx, filter).Decode(&result)
-	// if err != nil {
-	//     log.Fatal(err)
-	// }
+	result := &models.Info{}
+
+	filter := bson.M{}
+	ctx, _ = context.WithTimeout(context.Background(), 5*time.Second)
+	err = collection.FindOne(ctx, filter).Decode(&result)
+	if err != nil {
+		// log.Fatal(err)
+	}
+
+	if info.Height > 0 {
+		return info.Height + 1
+	}
+	return 0
 	// 	const info = this.db.models.Info.findOne()
 	// 	this.latestBlockNumber = info ? info.height + 1 : 0
 }
