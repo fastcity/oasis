@@ -29,24 +29,28 @@ type ErrInfo struct {
 }
 
 // GetBlockHeight 获取块高
-func (u *Util) GetBlockHeight() (height interface{}, err error) {
+func (u *Util) GetBlockHeight() (height int64, err error) {
 	url := u.BaseURL + "/chain"
 
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
 	body, err := u.apiGet(url)
 	if err != nil {
-		return "-1", err
+		return -1, err
 	}
-	resp := &Response{}
+	type response struct {
+		Result map[string]int64 `json:"result"`
+		Error  ErrInfo          `json:"error"`
+	}
+	resp := &response{}
 	err = json.Unmarshal(body, resp)
 	if err != nil {
-		return "-1", err
+		return -1, err
 	}
 	// return res, nil
 	if resp.Error.Message != "" {
-		return "", errors.New(resp.Error.Message)
+		return -1, errors.New(resp.Error.Message)
 	}
-	fmt.Println("GetBlockHeight", resp)
+	// fmt.Println("GetBlockHeight", resp)
 
 	return resp.Result["Height"], nil
 
@@ -62,8 +66,8 @@ func (u *Util) GetBlockHeight() (height interface{}, err error) {
 	// return resp.Result["Height"], nil
 }
 
-func (u *Util) GetBlockInfo(height string) (*Response, error) {
-	url := u.BaseURL + "/chain/blocks/" + height
+func (u *Util) GetBlockInfo(height int64) (*Response, error) {
+	url := fmt.Sprintf("%s/chain/blocks/%d", u.BaseURL, height)
 
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
 	// return u.apiGet(url)

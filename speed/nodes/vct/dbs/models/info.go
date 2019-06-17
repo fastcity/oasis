@@ -3,7 +3,7 @@ package models
 import "time"
 
 type Info struct {
-	Height       string
+	Height       int64
 	Hash         string
 	Time         string
 	TxCount      int64 // 截至当前块的总交易数量
