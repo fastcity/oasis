@@ -15,6 +15,7 @@ import (
 	"time"
 
 	// "github.com/Shopify/sarama"
+	"github.com/buger/jsonparser"
 	"github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
@@ -123,6 +124,7 @@ func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 			"Height": h,
 		},
 	}
+	jsonparser.Get(res, "person", "name", "fullName")
 
 	b, _ := json.Marshal(res)
 
@@ -164,8 +166,6 @@ func initLatestBlockNumber() int64 {
 		return result.Height + 1
 	}
 	return 0
-	// 	const info = this.db.models.Info.findOne()
-	// 	this.latestBlockNumber = info ? info.height + 1 : 0
 }
 
 func isNewBlockAvalible(number int64) bool {
@@ -180,21 +180,35 @@ func isNewBlockAvalible(number int64) bool {
 
 }
 
-func getBlockInfo(number int64) *util.Response {
+func getBlockInfo(number int64) []byte {
 	u := util.Util{BaseURL: "http://127.0.0.1:7080/api/v1"}
 
-	block, err := u.GetBlockInfo(number)
+	b, err := u.GetBlockInfo(number)
 
 	if err != nil {
-		fmt.Println("getBlockInfo error", err)
+		return nil
 	}
-	return block
+	return b
+
+	// if err != nil {
+	// 	fmt.Println("getBlockInfo error", err)
+	// }
+	// return block
 
 }
 
 func readAndParseBlock(number int64) {
 	blockInfo := getBlockInfo(number)
-	fmt.Println("---------------", blockInfo)
+	// fmt.Println("-+++++++++", string(blockInfo))
+	type res struct {
+		Result map[string]models.Blocks `json:"result"`
+	}
+	b := &res{}
+	err := json.Unmarshal(blockInfo, b)
+	if err != nil {
+		// return -1, err
+	}
+	fmt.Println("---------------", b)
 	// if (blockInfo.result) {
 	// 	// 交易表
 	// 	// await that.db.models.Transaction.deleteMany({ blockId: height });
@@ -372,10 +386,22 @@ func readAndParseBlock(number int64) {
 func loopReadAndPaser() {
 	dbHeight := initLatestBlockNumber()
 	fmt.Println("------------loopReadAndPaser", dbHeight)
-	for isNewBlockAvalible(dbHeight) {
-		// 解析区块及事务
-		readAndParseBlock(dbHeight)
-		dbHeight++
+	b := make(chan int)
+	for {
+		select {
+		case <-b:
+		case <-time.After(time.Second * 1):
+			if isNewBlockAvalible(dbHeight) {
+				// 解析区块及事务
+				readAndParseBlock(dbHeight)
+				dbHeight++
+			}
+		}
+		// }
+		//  isNewBlockAvalible(dbHeight)
+		// 	// 解析区块及事务
+		// 	readAndParseBlock(dbHeight)
+		// 	dbHeight++
+		// }
 	}
-
 }

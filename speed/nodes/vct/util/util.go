@@ -66,19 +66,15 @@ func (u *Util) GetBlockHeight() (height int64, err error) {
 	// return resp.Result["Height"], nil
 }
 
-func (u *Util) GetBlockInfo(height int64) (*Response, error) {
+func (u *Util) GetBlockInfo(height int64) ([]byte, error) {
 	url := fmt.Sprintf("%s/chain/blocks/%d", u.BaseURL, height)
 
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
 	// return u.apiGet(url)
-	resp := &Response{}
-	body, err := u.apiGet(url)
-	if err != nil {
-		return resp, err
-	}
-
-	err = json.Unmarshal(body, resp)
-	return resp, err
+	// resp := &Response{}
+	return u.apiGet(url)
+	// err = json.Unmarshal(body, resp)
+	// return resp, err
 }
 
 // createTransactionData 创建未签名事务
