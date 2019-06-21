@@ -124,7 +124,6 @@ func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 			"Height": h,
 		},
 	}
-	jsonparser.Get(res, "person", "name", "fullName")
 
 	b, _ := json.Marshal(res)
 
@@ -198,17 +197,54 @@ func getBlockInfo(number int64) []byte {
 }
 
 func readAndParseBlock(number int64) {
-	blockInfo := getBlockInfo(number)
+	blockInfos := getBlockInfo(number)
 	// fmt.Println("-+++++++++", string(blockInfo))
 	type res struct {
-		Result map[string]models.Blocks `json:"result"`
+		Result *models.Blocks `json:"result"`
 	}
+	fmt.Println("--------------- blockInfo", string(blockInfos))
 	b := &res{}
-	err := json.Unmarshal(blockInfo, b)
+	err := json.Unmarshal(blockInfos, b)
 	if err != nil {
 		// return -1, err
+		fmt.Println("json.Unmarshal(blockInfo error", err)
 	}
-	fmt.Println("---------------", b)
+	fmt.Println("---------------json.Unmarshal ", b)
+
+	h, err := jsonparser.GetString(blockInfos, "result", "Height")
+	if err != nil {
+		fmt.Println("jsonparser.GetString error", err)
+	}
+	fmt.Println("---------------jsonparser.GetString", h)
+
+	coll := db.GetCollection("vct", "transactions")
+	err = coll.Drop(context.Background())
+
+	if b.Result.Height != "" {
+
+		// result, err := coll.InsertOne(
+		// 	context.Background(),
+		// 	bson.D{
+		// 		{"item", "canvas"},
+		// 		{"qty", 100},
+		// 		{"tags", bson.A{"cotton"}},
+		// 		{"size", bson.D{
+		// 			{"h", 28},
+		// 			{"w", 35.5},
+		// 			{"uom", "cm"},
+		// 		}},
+		// 	})
+		docs := bson.D{
+			{"height", b.Result.Height},
+			{"hash", b.Result.Hash},
+			{"time", b.Result.TimeStamp},
+		}
+		result, err := coll.InsertOne(context.Background(), docs)
+		if err != nil {
+
+		}
+		fmt.Println("insert one ", result.InsertedID)
+	}
 	// if (blockInfo.result) {
 	// 	// 交易表
 	// 	// await that.db.models.Transaction.deleteMany({ blockId: height });
@@ -218,40 +254,6 @@ func readAndParseBlock(number int64) {
 	// 	blockInfo = blockInfo.result
 	// 	logger.debug(`第${height} 块数据 ${JSON.stringify(blockInfo)}`)
 	// 	// blockInfo = that.testdata() // 手动构造数据测试
-
-	// 	/*
-	// 		"jsonrpc": "2.0",
-	// 		"result": {
-	// 		"Height": "1",
-	// 		"Hash": "Local",
-	// 		"TimeStamp": "2019-02-14 19:57:12.1294157 +0800 CST m=+18.015939401",
-	// 		"Transactions": [
-	// 				{
-	// 				  "Height": "1",
-	// 				  "TxID": "78629A0F5F3F164F1583390EB8263C3C",
-	// 				  "Chaincode": "local",
-	// 				  "Method": "TOKEN.ASSIGN",
-	// 				  "CreatedFlag": false,
-	// 				  "ChaincodeModule": "AtomicEnergy_v1",
-	// 				  "Nonce": "B991CAF3783E7CFA43ABBF3A60D8D27314E3CB76",
-	// 				  "Detail": {
-	// 					"amount": "400000",
-	// 					"to": "ARJtq6Q46oTnxDwvVqMgDtZeNxs7Ybt81A"
-	// 				  },
-	// 				  "TxHash": "990B78AE548E3CB8B8D389A1371E7ECE8316A44878CDB4AD9DAD003329E47CD7"
-	// 				}
-	// 		]
-	// 		"TxEvents": [
-	// 		  {
-	// 			"TxID": "8866CB397916001E158368A7E2329318",
-	// 			"Chaincode": "local",
-	// 			"Name": "INVOKEERROR",
-	// 			"Status": 1,
-	// 			"Detail": "Local invoke error: handling method [MTOKEN.INIT] fail: Can not re-deploy existed data"
-	// 		  }
-	// 		]
-	// 	*/
-
 	// 	const rawdata = {
 	// 		height: blockInfo.Height,
 	// 		hash: blockInfo.Hash,

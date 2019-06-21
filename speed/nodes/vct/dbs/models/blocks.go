@@ -1,27 +1,25 @@
 package models
 
-import "time"
-
 type Blocks struct {
-	Height    int64
-	Hash      string
-	TimeStamp string
-	Txs       []Transactions
-	Events    []TxEvents
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Height    string         `json:"height"`
+	Hash      string         `json:"hash"`
+	TimeStamp string         `json:"timeStamp"`
+	Txs       []Transactions `json:"transactions"`
+	Events    []TxEvents     `json:"txEvents"`
+	// CreatedAt time.Time      `json:"height"`
+	// UpdatedAt time.Time      `json:"height"`
 }
 
 type Transactions struct {
-	Height          int64
-	TxID            string
-	Chaincode       string
-	Method          string
-	CreatedFlag     bool
-	ChaincodeModule string
-	Nonce           string
-	*Detail
-	TxHash string
+	Height          string  `json:"height"`
+	TxID            string  `json:"txID"`
+	Chaincode       string  `json:"chaincode"`
+	Method          string  `json:"method"`
+	CreatedFlag     bool    `json:"createdFlag"`
+	ChaincodeModule string  `json:"chaincodeModule"`
+	Nonce           string  `json:"nonce"`
+	Detail          *Detail `json:"detail"`
+	TxHash          string  `json:"txHash"`
 }
 
 type TxEvents struct {
@@ -29,18 +27,18 @@ type TxEvents struct {
 	// 			"Name": "INVOKEERROR",
 	// 			"Status": 1,
 	// 			"Detail": "Local invoke error: handling method [MTOKEN.INIT] fail: Can not re-deploy existed data"
-	Status    int64
-	TxID      string
-	Chaincode string
-	Name      string
-	Detail    string
+	Status    int64  `json:"status"`
+	TxID      string `json:"txID"`
+	Chaincode string `json:"chaincode"`
+	Name      string `json:"name"`
+	Detail    string `json:"detail"`
 }
 
 type Detail struct {
-	Amount string
-	From   string
-	To     string
-	Token  string
+	Amount string `json:"amount"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Token  string `json:"token"`
 
 	//   Detail: {
 	// 	"amount": "400000",

@@ -48,4 +48,8 @@
 [[constraint]]
   branch = "master"
   name = "github.com/buger/jsonparser"
-  # 
+
+
+# [[constraint]]
+#   branch = "master"
+#   name = "github.com/bet365/jingo"
