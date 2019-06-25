@@ -244,6 +244,37 @@ func readAndParseBlock(number int64) {
 
 		}
 		fmt.Println("insert one ", result.InsertedID)
+
+		err = coll.Drop(context.Background())
+
+		db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
+
+		txs := models.Transactions{
+			BlockHeight: b.Result.Height,
+			BlockTime:   b.Result.TimeStamp,
+			BlockHash:   b.Result.Hash,
+			OnChain:     true,
+		}
+
+		for _, item := range b.Result.Txs {
+			txs.TxID = item.TxID
+			txs.Method = item.Method
+			if item.Method == "batch" {
+				jsonparser.ArrayEach(blockInfos, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+					jsonparser.GetInt(value, "person", "avatars", "[0]", "url")
+				}, "result", "Transactions", "Detail")
+
+			}
+		}
+
+		for _, item := range b.Result.Events {
+			// txs.From=item.
+			txs.TxID = item.TxID
+			txs.Log = item.Detail
+			txs.OnChain = false
+
+		}
+
 	}
 	// if (blockInfo.result) {
 	// 	// 交易表
@@ -414,7 +445,7 @@ func kakfa() {
 	config.Producer.Partitioner = sarama.NewRandomPartitioner //写到随机分区中，默认设置8个分区
 	config.Producer.Return.Successes = true
 	msg := &sarama.ProducerMessage{}
-	msg.Topic = `nginx_log`
+	msg.Topic = `VCT_TX`
 	msg.Value = sarama.StringEncoder("this is a good test")
 	client, err := sarama.NewSyncProducer([]string{"127.0.0.1:9092"}, config)
 	if err != nil {

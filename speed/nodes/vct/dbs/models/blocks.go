@@ -1,25 +1,26 @@
 package models
 
 type Blocks struct {
-	Height    string         `json:"height"`
-	Hash      string         `json:"hash"`
-	TimeStamp string         `json:"timeStamp"`
-	Txs       []Transactions `json:"transactions"`
-	Events    []TxEvents     `json:"txEvents"`
+	Height    string     `json:"height"`
+	Hash      string     `json:"hash"`
+	TimeStamp string     `json:"timeStamp"`
+	Txs       []Txs      `json:"transactions"`
+	Events    []TxEvents `json:"txEvents"`
 	// CreatedAt time.Time      `json:"height"`
 	// UpdatedAt time.Time      `json:"height"`
 }
 
-type Transactions struct {
-	Height          string  `json:"height"`
-	TxID            string  `json:"txID"`
-	Chaincode       string  `json:"chaincode"`
-	Method          string  `json:"method"`
-	CreatedFlag     bool    `json:"createdFlag"`
-	ChaincodeModule string  `json:"chaincodeModule"`
-	Nonce           string  `json:"nonce"`
-	Detail          *Detail `json:"detail"`
-	TxHash          string  `json:"txHash"`
+type Txs struct {
+	Height          string    `json:"height"`
+	TxID            string    `json:"txID"`
+	Chaincode       string    `json:"chaincode"`
+	Method          string    `json:"method"`
+	CreatedFlag     bool      `json:"createdFlag"`
+	ChaincodeModule string    `json:"chaincodeModule"`
+	Nonce           string    `json:"nonce"`
+	Detail          *Detail   `json:"detail"`
+	TxHash          string    `json:"txHash"`
+	Details         *[]Detail `json:"detail"`
 }
 
 type TxEvents struct {
