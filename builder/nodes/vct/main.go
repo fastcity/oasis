@@ -1,9 +1,10 @@
 package main
 
 import (
-	"century/oasis/speed/nodes/vct/dbs"
-	"century/oasis/speed/nodes/vct/dbs/models"
-	"century/oasis/speed/nodes/vct/util"
+	"century/oasis/speed/nodes/vct/util/chain"
+	"century/oasis/speed/nodes/vct/util/comm"
+	"century/oasis/speed/nodes/vct/util/dbs"
+	"century/oasis/speed/nodes/vct/util/dbs/models"
 	"context"
 	"flag"
 	"fmt"
@@ -14,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Shopify/sarama"
 	"github.com/buger/jsonparser"
+	"github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
 	// "century/oasis/speed/vct/db"
@@ -27,6 +28,9 @@ var (
 	json               = jsoniter.ConfigCompatibleWithStandardLibrary
 	db                 *dbs.Conn
 	currentBlockNumber = 0
+	chainConf          gchain.ChainApi
+	kModel             comm.KInterface
+	assign             = "TOKEN.ASSIGN"
 )
 
 // Result 返回结果
@@ -43,8 +47,9 @@ func main() {
 
 	// viper.SetConfigFile("")
 	gopath := os.Getenv("GOPATH")
+
 	for _, p := range filepath.SplitList(gopath) {
-		path := filepath.Join(p, "src/century/oasis/config", strings.ToLower(env), "nodes")
+		path := filepath.Join(p, "src/century/oasis/speed/config", strings.ToLower(env), "nodes")
 		// viper.AddConfigPath(path)
 		InitViper(strings.ToLower(chain), strings.ToLower(chain), path)
 	}
@@ -57,7 +62,13 @@ func main() {
 	if err != nil {
 		fmt.Println("connect mongo error", err)
 	}
+	viper.GetString("node.protocal")
+	api := fmt.Sprintf("%s://%s:%d", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
+	chainConf = gchain.NewChainAPi(api)
+	kModel := comm.NewKafkaModel(viper.GetStringSlice("kafka.service"))
+	defer kModel.Close()
 	loopReadAndPaser()
+
 }
 
 func router(url string) {
@@ -74,7 +85,6 @@ func router(url string) {
 }
 
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
-	u := util.Util{BaseURL: "127.0.0.1:7080"}
 	from := r.PostFormValue("from")
 	to := r.PostFormValue("to")
 	// value := r.PostFormValue("value")
@@ -87,12 +97,12 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Invalid amount")
 		return
 	}
-	u.CreateTransactionData(from, to, tokenKey, amount)
+	chainConf.CreateTransactionData(from, to, tokenKey, amount)
 
 }
 
 func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
-	u := util.Util{BaseURL: "127.0.0.1:7080"}
+
 	from := r.PostFormValue("from")
 	to := r.PostFormValue("to")
 
@@ -105,14 +115,13 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Invalid amount")
 		return
 	}
-	u.CreateTransactionData(from, to, tokenKey, amount)
+	chainConf.CreateTransactionData(from, to, tokenKey, amount)
 
 }
 
 func getBlockHeight(w http.ResponseWriter, r *http.Request) {
-	u := util.Util{BaseURL: "http://127.0.0.1:7080/api/v1"}
 
-	h, err := u.GetBlockHeight()
+	h, err := chainConf.GetBlockHeight()
 	if err != nil {
 		fmt.Println("--------------err", err)
 	}
@@ -131,6 +140,7 @@ func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 
 //InitViper we can set viper which fabric peer is used
 func InitViper(envprefix string, filename string, configPath ...string) error {
+	fmt.Println("envprefix", envprefix, "filename", filename, "configPath", configPath)
 	viper.SetEnvPrefix(envprefix)
 	viper.AutomaticEnv()
 	replacer := strings.NewReplacer(".", "_")
@@ -167,9 +177,8 @@ func initLatestBlockNumber() int64 {
 }
 
 func isNewBlockAvalible(number int64) bool {
-	u := util.Util{BaseURL: "http://127.0.0.1:7080/api/v1"}
 
-	block, err := u.GetBlockHeight()
+	block, err := chainConf.GetBlockHeight()
 	if err != nil {
 		fmt.Println("--------------err", err)
 		block = -1
@@ -179,9 +188,8 @@ func isNewBlockAvalible(number int64) bool {
 }
 
 func getBlockInfo(number int64) []byte {
-	u := util.Util{BaseURL: "http://127.0.0.1:7080/api/v1"}
 
-	b, err := u.GetBlockInfo(number)
+	b, err := chainConf.GetBlockInfo(number)
 
 	if err != nil {
 		return nil
@@ -243,8 +251,192 @@ func readAndParseBlock(number int64) {
 
 		}
 		fmt.Println("insert one ", result.InsertedID)
-	}
 
+		err = coll.Drop(context.Background())
+
+		txs := models.Transactions{
+			BlockHeight: b.Result.Height,
+			BlockTime:   b.Result.TimeStamp,
+			BlockHash:   b.Result.Hash,
+			OnChain:     true,
+		}
+
+		for _, item := range b.Result.Txs {
+			txs.TxID = item.TxID
+			txs.Method = item.Method
+			if item.Method == "batch" {
+				jsonparser.ArrayEach(blockInfos, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+					m, err := jsonparser.GetString(value, "Method")
+					if err != nil {
+
+					}
+					if m == assign {
+						to, _ := jsonparser.GetString(value, "Method", "to")
+						token, _ := jsonparser.GetString(value, "Method", "name")
+						txs.To = to
+						txs.TokenKey = token
+					}
+
+				}, "result", "Transactions", "Detail")
+
+			} else {
+				txs.From = item.Detail.From
+				txs.To = item.Detail.To
+				txs.Value = item.Detail.Amount
+				txs.TokenKey = item.Detail.Token
+			}
+		}
+
+		for _, item := range b.Result.Events {
+			// txs.From=item.
+			txs.TxID = item.TxID
+			txs.Log = item.Detail
+			txs.OnChain = false
+
+		}
+
+		// kModel.SendMsg("VCT_TX", string(blockInfos))
+		db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
+		// db.GetCollection("vct", "transactions").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
+	}
+	// if (blockInfo.result) {
+	// 	// 交易表
+	// 	// await that.db.models.Transaction.deleteMany({ blockId: height });
+
+	// 	logger.info(`开始查询第${height} 块,删除已有数据`)
+
+	// 	blockInfo = blockInfo.result
+	// 	logger.debug(`第${height} 块数据 ${JSON.stringify(blockInfo)}`)
+	// 	// blockInfo = that.testdata() // 手动构造数据测试
+	// 	const rawdata = {
+	// 		height: blockInfo.Height,
+	// 		hash: blockInfo.Hash,
+	// 		timestamp: blockInfo.TimeStamp,
+
+	// 		transactions: blockInfo.Transactions || [],
+	// 		txEvents: blockInfo.TxEvents || [],
+
+	// 		// time: Date.parse(blockInfo.TimeStamp.split('+')[0]),
+
+	// 		rawTime: blockInfo.TimeStamp,
+	// 		time: this.dateToUnix(blockInfo.TimeStamp),
+	// 	}
+
+	// 	const txLen = rawdata.transactions.length + rawdata.txEvents.length
+
+	// 	// logger.debug(`块 ${height} txLen ${txLen}`)
+
+	// 	// 保存原始数据
+	// 	await that.db.models.Block.findOneAndUpdate({ height }, { $set: Object.assign({}, rawdata, { txCount: txLen }) }, { upsert: true });
+
+	// 	const { transactions, txEvents, ...baseFileds } = rawdata
+
+	// 	// 一次读取块种50个交易记录
+
+	// 	if (transactions && transactions.length > 0) { // 上链信息
+	// 		for (const tx of transactions) {
+
+	// 			/**
+	// 			 *  {
+	// 				 "Height": "4",
+	// 				 "TxID": "365A858149C6E2D115868BF811B28E24",
+	// 				 "Chaincode": "local",
+	// 				 "Method": "batch",
+	// 				 "CreatedFlag": false,
+	// 				 "ChaincodeModule": "AtomicEnergy_v1",
+	// 				 "Nonce": "EBCD3BC27E8F541A4215960088E6550D6A4D2D9B",
+	// 				 "Detail": [
+	// 					 {
+	// 						 "Method": "MTOKEN.INIT",
+	// 						 "Detail": "VCT31: Unknown message"
+	// 					 },
+	// 					 {
+	// 						 "Method": "MTOKEN.ASSIGN",
+	// 						 "Detail": {
+	// 							 "amount": "1000000000000000000000000000",
+	// 							 "to": "ARJtq6Q46oTnxDwvVqMgDtZeNxs7Ybt81A",
+	// 							 "token": "VCT31"
+	// 						 }
+	// 					 }
+	// 				 ],
+	// 				 "TxHash": "E102AB0080FDE0DB7A95487ACE99CFDBEF835F366A806A3AFDC8CA6E237033B8"
+	// 			 }
+	// 			 */
+	// 			const method = tx.Method.toLowerCase()
+	// 			const commonFields = {
+	// 				blockId: baseFileds.height,
+	// 				blockTime: baseFileds.time,
+	// 				blockHash: baseFileds.hash,
+
+	// 				txHash: tx.TxHash, // -------TxHash
+	// 				txid: tx.TxID,
+
+	// 				onchain: 1,
+	// 			}
+	// 			await that.paserTx(method, commonFields, tx.Detail)
+	// 		}
+	// 	}
+
+	// 	if (txEvents && txEvents.length > 0) { // 未上链信息 错误的事务信息
+	// 		// B80704BB7B4D7C03157D55B5E1B38BEC 查txid 可知道详情
+	// 		for (const txEvent of txEvents) {
+	// 			// {
+	// 			//     "TxID": "EEC34C367674CB741586E63A6DBC5DAC",
+	// 			//     "Chaincode": "local",
+	// 			//     "Name": "INVOKEERROR",
+	// 			//     "Status": 1,
+	// 			//     "Detail": "Local invoke error: handling method [MTOKEN.INIT] fail: Can not re-deploy existed data"
+	// 			// }
+
+	// 			// 错误的事务 链上查询不到信息  后面保存token等信息表的先不做修改 不应该再考虑onchain =-1 问题
+	// 			// {
+	// 			//     "jsonrpc": "2.0",
+	// 			//     "error": {
+	// 			//         "code": 0,
+	// 			//         "message": "rpc error: code = Unknown desc = openchain: resource not found",
+	// 			//         "data": null
+	// 			//     }
+	// 			// }
+
+	// 			const tx = {
+	// 				blockId: baseFileds.height,
+	// 				blockTime: baseFileds.time,
+	// 				blockHash: baseFileds.hash,
+	// 				method: '',
+	// 				txid: txEvent.TxID,
+	// 				onchain: -1,
+	// 				rawcode: txEvent.Status,
+	// 				message: txEvent.Detail,
+	// 			}
+
+	// 			const model = that.db.models.Transaction(tx);
+	// 			await model.save()
+	// 			// const s = await model.save()
+	// 			// await that.sendTxMsg(s.toObject())
+
+	// 		}
+	// 	}
+	// 	await that.sendTxMsg({ txBlockHeight: height })
+	// 	// ---------------------------以下是浏览器需要的信息
+
+	// 	const info = await that.db.models.Info.findOne();
+
+	// 	//----------------------------------------------------
+
+	// 	// 更新所读的区块高度
+	// 	await that.db.models.Info.findOneAndUpdate({}, {
+	// 		$set: {
+	// 			height, time: rawdata.time, hash: rawdata.hash,
+	// 		},
+	// 	}, { upsert: true });
+
+	// 	logger.info(`-------------------第 ${height} 块 end --------------------------`);
+	// } else {
+	// 	// 查询失败 更新表
+	// 	await that.db.models.Info.findOneAndUpdate({}, { $set: { height } }, { upsert: true });
+	// 	logger.error(`-------------------第 ${height} 块 读取失败 --------------------------`);
+	// 	return
+	// }
 }
 
 func loopReadAndPaser() {
@@ -268,28 +460,4 @@ func loopReadAndPaser() {
 		// 	dbHeight++
 		// }
 	}
-}
-
-func kakfa() {
-	config := sarama.NewConfig()
-	config.Producer.RequiredAcks = sarama.WaitForAll          //赋值为-1：这意味着producer在follower副本确认接收到数据后才算一次发送完成。
-	config.Producer.Partitioner = sarama.NewRandomPartitioner //写到随机分区中，默认设置8个分区
-	config.Producer.Return.Successes = true
-	msg := &sarama.ProducerMessage{}
-	msg.Topic = `nginx_log`
-	msg.Value = sarama.StringEncoder("this is a good test")
-	client, err := sarama.NewSyncProducer([]string{"127.0.0.1:9092"}, config)
-	if err != nil {
-		fmt.Println("producer close err, ", err)
-		return
-	}
-	defer client.Close()
-	pid, offset, err := client.SendMessage(msg)
-
-	if err != nil {
-		fmt.Println("send message failed, ", err)
-		return
-	}
-	fmt.Printf("分区ID:%v, offset:%v \n", pid, offset)
-
 }

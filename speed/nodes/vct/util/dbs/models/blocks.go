@@ -11,16 +11,16 @@ type Blocks struct {
 }
 
 type Txs struct {
-	Height          string    `json:"height"`
-	TxID            string    `json:"txID"`
-	Chaincode       string    `json:"chaincode"`
-	Method          string    `json:"method"`
-	CreatedFlag     bool      `json:"createdFlag"`
-	ChaincodeModule string    `json:"chaincodeModule"`
-	Nonce           string    `json:"nonce"`
-	Detail          *Detail   `json:"detail"`
-	TxHash          string    `json:"txHash"`
-	Details         *[]Detail `json:"detail"`
+	Height          string  `json:"height"`
+	TxID            string  `json:"txID"`
+	Chaincode       string  `json:"chaincode"`
+	Method          string  `json:"method"`
+	CreatedFlag     bool    `json:"createdFlag"`
+	ChaincodeModule string  `json:"chaincodeModule"`
+	Nonce           string  `json:"nonce"`
+	Detail          *Detail `json:"detail"`
+	TxHash          string  `json:"txHash"`
+	// Details         *[]Detail `json:"detail"`
 }
 
 type TxEvents struct {

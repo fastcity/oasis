@@ -53,5 +53,8 @@ func (k *kkModel) SendMsg(topic, data string) error {
 }
 
 func (k *kkModel) Close() {
-	k.Producer.Close()
+	if k != nil && k.Producer != nil {
+		k.Producer.Close()
+	}
+
 }

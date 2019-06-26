@@ -47,8 +47,9 @@ func main() {
 
 	// viper.SetConfigFile("")
 	gopath := os.Getenv("GOPATH")
+
 	for _, p := range filepath.SplitList(gopath) {
-		path := filepath.Join(p, "src/century/oasis/config", strings.ToLower(env), "nodes")
+		path := filepath.Join(p, "src/century/oasis/speed/config", strings.ToLower(env), "nodes")
 		// viper.AddConfigPath(path)
 		InitViper(strings.ToLower(chain), strings.ToLower(chain), path)
 	}
@@ -62,7 +63,7 @@ func main() {
 		fmt.Println("connect mongo error", err)
 	}
 
-	api := fmt.Sprintf("%s://%s:%d", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
+	api := fmt.Sprintf("%s://%s:%s", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
 	chainConf = gchain.NewChainAPi(api)
 	kModel := comm.NewKafkaModel(viper.GetStringSlice("kafka.service"))
 	defer kModel.Close()
@@ -139,6 +140,7 @@ func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 
 //InitViper we can set viper which fabric peer is used
 func InitViper(envprefix string, filename string, configPath ...string) error {
+	fmt.Println("envprefix", envprefix, "filename", filename, "configPath", configPath)
 	viper.SetEnvPrefix(envprefix)
 	viper.AutomaticEnv()
 	replacer := strings.NewReplacer(".", "_")
@@ -260,6 +262,7 @@ func readAndParseBlock(number int64) {
 		}
 
 		for _, item := range b.Result.Txs {
+			fmt.Println("item", item)
 			txs.TxID = item.TxID
 			txs.Method = item.Method
 			if item.Method == "batch" {
