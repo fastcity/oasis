@@ -1,4 +1,4 @@
-package util
+package gchain
 
 import (
 	"errors"
@@ -13,8 +13,14 @@ import (
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
-type Util struct {
+type api struct {
 	BaseURL string
+}
+type ChainApi interface {
+	GetBlockHeight() (height int64, err error)
+	GetBlockInfo(height int64) ([]byte, error)
+	CreateTransactionData(from, to, tokenKey string, amount *big.Int) (*Response, error)
+	SubmitTransactionData(rawtx, signStr string) (*Response, error)
 }
 
 type Response struct {
@@ -28,8 +34,14 @@ type ErrInfo struct {
 	Data    string `json:"data"`
 }
 
+func NewChainAPi(url string) ChainApi {
+	return &api{
+		BaseURL: url + "api/v1",
+	}
+}
+
 // GetBlockHeight 获取块高
-func (u *Util) GetBlockHeight() (height int64, err error) {
+func (u *api) GetBlockHeight() (height int64, err error) {
 	url := u.BaseURL + "/chain"
 
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
@@ -66,7 +78,7 @@ func (u *Util) GetBlockHeight() (height int64, err error) {
 	// return resp.Result["Height"], nil
 }
 
-func (u *Util) GetBlockInfo(height int64) ([]byte, error) {
+func (u *api) GetBlockInfo(height int64) ([]byte, error) {
 	url := fmt.Sprintf("%s/chain/blocks/%d", u.BaseURL, height)
 
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
@@ -78,12 +90,12 @@ func (u *Util) GetBlockInfo(height int64) ([]byte, error) {
 }
 
 // createTransactionData 创建未签名事务
-func (u *Util) CreateTransactionData(from, to, tokenKey string, amount *big.Int) (*Response, error) {
+func (u *api) CreateTransactionData(from, to, tokenKey string, amount *big.Int) (*Response, error) {
 	url := u.BaseURL
 	if !isEmpty(tokenKey) {
-		url = url + "data/token." + tokenKey + "/fund"
+		url = url + "/data/token." + tokenKey + "/fund"
 	}
-	url = url + `data/fund`
+	url = url + `/data/fund`
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
 	body := fmt.Sprintf("from=%s&to=%s&amount=%s", from, to, amount)
 	resp, err := u.apiPost(url, body)
@@ -93,7 +105,7 @@ func (u *Util) CreateTransactionData(from, to, tokenKey string, amount *big.Int)
 	return resp, err
 }
 
-func (u *Util) SubmitTransactionData(rawtx, signStr string) (*Response, error) {
+func (u *api) SubmitTransactionData(rawtx, signStr string) (*Response, error) {
 	url := u.BaseURL + `/rawtransaction`
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
 	body := fmt.Sprintf("tx=%s&sig=%s", rawtx, signStr)
@@ -111,7 +123,7 @@ func isEmpty(str string) bool {
 	return false
 }
 
-func (u *Util) apiGet(url string) ([]byte, error) {
+func (u *api) apiGet(url string) ([]byte, error) {
 	// res := &Response{}
 	resp, err := http.Get(url)
 	if err != nil {
@@ -129,7 +141,7 @@ func (u *Util) apiGet(url string) ([]byte, error) {
 	// return res, nil
 }
 
-func (u *Util) apiPost(url, requestBody string) (*Response, error) {
+func (u *api) apiPost(url, requestBody string) (*Response, error) {
 	res := &Response{}
 
 	resp, err := http.Post(url, "application/x-www-form-urlencoded", strings.NewReader(requestBody))

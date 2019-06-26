@@ -1,9 +1,10 @@
 package main
 
 import (
-	"century/oasis/speed/nodes/vct/dbs"
-	"century/oasis/speed/nodes/vct/dbs/models"
-	"century/oasis/speed/nodes/vct/util"
+	"century/oasis/speed/nodes/vct/util/chain"
+	"century/oasis/speed/nodes/vct/util/comm"
+	"century/oasis/speed/nodes/vct/util/dbs"
+	"century/oasis/speed/nodes/vct/util/dbs/models"
 	"context"
 	"flag"
 	"fmt"
@@ -14,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Shopify/sarama"
 	"github.com/buger/jsonparser"
 	"github.com/json-iterator/go"
 	"github.com/spf13/viper"
@@ -28,7 +28,9 @@ var (
 	json               = jsoniter.ConfigCompatibleWithStandardLibrary
 	db                 *dbs.Conn
 	currentBlockNumber = 0
-	assign             = "token.assign"
+	chainConf          gchain.ChainApi
+	kModel             comm.KInterface
+	assign             = "TOKEN.ASSIGN"
 )
 
 // Result 返回结果
@@ -59,7 +61,13 @@ func main() {
 	if err != nil {
 		fmt.Println("connect mongo error", err)
 	}
+
+	api := fmt.Sprintf("%s://%s:%d", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
+	chainConf = gchain.NewChainAPi(api)
+	kModel := comm.NewKafkaModel(viper.GetStringSlice("kafka.service"))
+	defer kModel.Close()
 	loopReadAndPaser()
+
 }
 
 func router(url string) {
@@ -76,7 +84,6 @@ func router(url string) {
 }
 
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
-	u := util.Util{BaseURL: "127.0.0.1:7080"}
 	from := r.PostFormValue("from")
 	to := r.PostFormValue("to")
 	// value := r.PostFormValue("value")
@@ -89,12 +96,12 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Invalid amount")
 		return
 	}
-	u.CreateTransactionData(from, to, tokenKey, amount)
+	chainConf.CreateTransactionData(from, to, tokenKey, amount)
 
 }
 
 func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
-	u := util.Util{BaseURL: "127.0.0.1:7080"}
+
 	from := r.PostFormValue("from")
 	to := r.PostFormValue("to")
 
@@ -107,14 +114,13 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Invalid amount")
 		return
 	}
-	u.CreateTransactionData(from, to, tokenKey, amount)
+	chainConf.CreateTransactionData(from, to, tokenKey, amount)
 
 }
 
 func getBlockHeight(w http.ResponseWriter, r *http.Request) {
-	u := util.Util{BaseURL: "http://127.0.0.1:7080/api/v1"}
 
-	h, err := u.GetBlockHeight()
+	h, err := chainConf.GetBlockHeight()
 	if err != nil {
 		fmt.Println("--------------err", err)
 	}
@@ -169,9 +175,8 @@ func initLatestBlockNumber() int64 {
 }
 
 func isNewBlockAvalible(number int64) bool {
-	u := util.Util{BaseURL: "http://127.0.0.1:7080/api/v1"}
 
-	block, err := u.GetBlockHeight()
+	block, err := chainConf.GetBlockHeight()
 	if err != nil {
 		fmt.Println("--------------err", err)
 		block = -1
@@ -181,9 +186,8 @@ func isNewBlockAvalible(number int64) bool {
 }
 
 func getBlockInfo(number int64) []byte {
-	u := util.Util{BaseURL: "http://127.0.0.1:7080/api/v1"}
 
-	b, err := u.GetBlockInfo(number)
+	b, err := chainConf.GetBlockInfo(number)
 
 	if err != nil {
 		return nil
@@ -248,8 +252,6 @@ func readAndParseBlock(number int64) {
 
 		err = coll.Drop(context.Background())
 
-		db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
-
 		txs := models.Transactions{
 			BlockHeight: b.Result.Height,
 			BlockTime:   b.Result.TimeStamp,
@@ -276,7 +278,10 @@ func readAndParseBlock(number int64) {
 				}, "result", "Transactions", "Detail")
 
 			} else {
-
+				txs.From = item.Detail.From
+				txs.To = item.Detail.To
+				txs.Value = item.Detail.Amount
+				txs.TokenKey = item.Detail.Token
 			}
 		}
 
@@ -288,6 +293,9 @@ func readAndParseBlock(number int64) {
 
 		}
 
+		// kModel.SendMsg("VCT_TX", string(blockInfos))
+		db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
+		// db.GetCollection("vct", "transactions").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
 	}
 	// if (blockInfo.result) {
 	// 	// 交易表
@@ -450,28 +458,4 @@ func loopReadAndPaser() {
 		// 	dbHeight++
 		// }
 	}
-}
-
-func kakfa() {
-	config := sarama.NewConfig()
-	config.Producer.RequiredAcks = sarama.WaitForAll          //赋值为-1：这意味着producer在follower副本确认接收到数据后才算一次发送完成。
-	config.Producer.Partitioner = sarama.NewRandomPartitioner //写到随机分区中，默认设置8个分区
-	config.Producer.Return.Successes = true
-	msg := &sarama.ProducerMessage{}
-	msg.Topic = `VCT_TX`
-	msg.Value = sarama.StringEncoder("this is a good test")
-	client, err := sarama.NewSyncProducer([]string{"127.0.0.1:9092"}, config)
-	if err != nil {
-		fmt.Println("producer close err, ", err)
-		return
-	}
-	defer client.Close()
-	pid, offset, err := client.SendMessage(msg)
-
-	if err != nil {
-		fmt.Println("send message failed, ", err)
-		return
-	}
-	fmt.Printf("分区ID:%v, offset:%v \n", pid, offset)
-
 }
