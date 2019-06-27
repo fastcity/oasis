@@ -19,6 +19,7 @@ import (
 	"github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	// "century/oasis/speed/vct/db"
 )
 
@@ -228,11 +229,12 @@ func readAndParseBlock(number int64) {
 	// err = coll.Drop(context.Background())
 
 	if b.Result.Height != "" {
-		docs := bson.D{
-			{"height", b.Result.Height},
-			{"hash", b.Result.Hash},
-			{"time", b.Result.TimeStamp},
+		docs := bson.M{
+			"height": b.Result.Height,
+			"hash":   b.Result.Hash,
+			"time":   b.Result.TimeStamp,
 		}
+
 		_, err = coll.InsertOne(context.Background(), docs)
 		if err != nil {
 			fmt.Println("insert one err", err)
@@ -282,8 +284,14 @@ func readAndParseBlock(number int64) {
 
 		}
 
+		op := &options.FindOneAndUpdateOptions{}
+		op.SetUpsert(true)
 		// kModel.SendMsg("VCT_TX", string(blockInfos))
-		rs := db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
+		rs := db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.M{}, bson.D{{"$set", bson.M{"height": h}}}, op)
+		if rs.Err() != nil {
+			fmt.Println("FindOneAndUpdate err", rs.Err())
+		}
+
 		fmt.Println("FindOneAndUpdate", rs)
 		// db.GetCollection("vct", "transactions").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
 	}
