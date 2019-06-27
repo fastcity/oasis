@@ -26,7 +26,7 @@ var (
 	chain              string
 	env                string
 	json               = jsoniter.ConfigCompatibleWithStandardLibrary
-	db                 *dbs.Conn
+	db                 dbs.MongoI
 	currentBlockNumber = 0
 	chainConf          gchain.ChainApi
 	kModel             comm.KInterface
@@ -57,7 +57,7 @@ func main() {
 	// port := viper.GetString("service.port")
 	// router(host + ":" + port)
 
-	db = dbs.New("127.0.01", 27017)
+	db = dbs.New(viper.GetString("db.addr"))
 	err := db.GetConn()
 	if err != nil {
 		fmt.Println("connect mongo error", err)
@@ -224,35 +224,20 @@ func readAndParseBlock(number int64) {
 	}
 	fmt.Println("---------------jsonparser.GetString", h)
 
-	coll := db.GetCollection("vct", "transactions")
-	err = coll.Drop(context.Background())
+	coll := db.GetCollection("vct", "blocks")
+	// err = coll.Drop(context.Background())
 
 	if b.Result.Height != "" {
-
-		// result, err := coll.InsertOne(
-		// 	context.Background(),
-		// 	bson.D{
-		// 		{"item", "canvas"},
-		// 		{"qty", 100},
-		// 		{"tags", bson.A{"cotton"}},
-		// 		{"size", bson.D{
-		// 			{"h", 28},
-		// 			{"w", 35.5},
-		// 			{"uom", "cm"},
-		// 		}},
-		// 	})
 		docs := bson.D{
 			{"height", b.Result.Height},
 			{"hash", b.Result.Hash},
 			{"time", b.Result.TimeStamp},
 		}
-		result, err := coll.InsertOne(context.Background(), docs)
+		_, err = coll.InsertOne(context.Background(), docs)
 		if err != nil {
-
+			fmt.Println("insert one err", err)
 		}
-		fmt.Println("insert one ", result.InsertedID)
-
-		err = coll.Drop(context.Background())
+		// err = coll.Drop(context.Background())
 
 		txs := models.Transactions{
 			BlockHeight: b.Result.Height,
@@ -269,7 +254,7 @@ func readAndParseBlock(number int64) {
 				jsonparser.ArrayEach(blockInfos, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
 					m, err := jsonparser.GetString(value, "Method")
 					if err != nil {
-
+						fmt.Println("jsonparser.GetString Method error", err)
 					}
 					if m == assign {
 						to, _ := jsonparser.GetString(value, "Method", "to")
@@ -281,6 +266,7 @@ func readAndParseBlock(number int64) {
 				}, "result", "Transactions", "Detail")
 
 			} else {
+				fmt.Println("item.Detail  not batch", item.Detail)
 				txs.From = item.Detail.From
 				txs.To = item.Detail.To
 				txs.Value = item.Detail.Amount
@@ -297,7 +283,8 @@ func readAndParseBlock(number int64) {
 		}
 
 		// kModel.SendMsg("VCT_TX", string(blockInfos))
-		db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
+		rs := db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
+		fmt.Println("FindOneAndUpdate", rs)
 		// db.GetCollection("vct", "transactions").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
 	}
 	// if (blockInfo.result) {
