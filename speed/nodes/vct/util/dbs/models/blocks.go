@@ -4,6 +4,7 @@ type Blocks struct {
 	Height    string     `json:"height"`
 	Hash      string     `json:"hash"`
 	TimeStamp string     `json:"timeStamp"`
+	Txid      string     `json:"txid"`
 	Txs       []Txs      `json:"transactions"`
 	Events    []TxEvents `json:"txEvents"`
 	// CreatedAt time.Time      `json:"height"`
@@ -12,7 +13,7 @@ type Blocks struct {
 
 type Txs struct {
 	Height          string  `json:"height"`
-	TxID            string  `json:"txID"`
+	Txid            string  `json:"txID"`
 	Chaincode       string  `json:"chaincode"`
 	Method          string  `json:"method"`
 	CreatedFlag     bool    `json:"createdFlag"`
@@ -29,7 +30,7 @@ type TxEvents struct {
 	// 			"Status": 1,
 	// 			"Detail": "Local invoke error: handling method [MTOKEN.INIT] fail: Can not re-deploy existed data"
 	Status    int64  `json:"status"`
-	TxID      string `json:"txID"`
+	Txid      string `json:"txID"`
 	Chaincode string `json:"chaincode"`
 	Name      string `json:"name"`
 	Detail    string `json:"detail"`

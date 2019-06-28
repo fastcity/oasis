@@ -15,7 +15,7 @@ type kkModel struct {
 }
 
 type KInterface interface {
-	SendMsg(topic, data string) error
+	SendMsg(topic, []byte) error
 	Close()
 }
 
@@ -37,10 +37,10 @@ func NewKafkaModel(Addrs []string) KInterface {
 	return m
 }
 
-func (k *kkModel) SendMsg(topic, data string) error {
+func (k *kkModel) SendMsg(topic string, data []byte) error {
 	msg := &sarama.ProducerMessage{}
 	msg.Topic = topic
-	msg.Value = sarama.StringEncoder(data)
+	msg.Value = sarama.ByteEncoder(data)
 
 	// defer client.Close()
 	pid, offset, err := k.Producer.SendMessage(msg)

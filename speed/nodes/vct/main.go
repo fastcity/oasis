@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -163,6 +164,7 @@ func initLatestBlockNumber() int64 {
 	result := &models.Info{}
 
 	filter := bson.M{}
+
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 	err := collection.FindOne(ctx, filter).Decode(&result)
 	if err != nil {
@@ -170,12 +172,20 @@ func initLatestBlockNumber() int64 {
 		fmt.Println(" collection.FindOne err", err)
 	}
 
-	fmt.Println("initLatestBlockNumber", result.Height)
+	fmt.Println("initLatestBlockNumber", result)
 	if result.Height > 0 {
 		return result.Height + 1
 	}
 	return 0
 }
+
+// func containsKey(doc bson.Raw, key ...string) bool {
+// 	_, err := doc.LookupErr(key...)
+// 	if err != nil {
+// 		return false
+// 	}
+// 	return true
+// }
 
 func isNewBlockAvalible(number int64) bool {
 
@@ -196,12 +206,6 @@ func getBlockInfo(number int64) []byte {
 		return nil
 	}
 	return b
-
-	// if err != nil {
-	// 	fmt.Println("getBlockInfo error", err)
-	// }
-	// return block
-
 }
 
 func readAndParseBlock(number int64) {
@@ -210,36 +214,23 @@ func readAndParseBlock(number int64) {
 	type res struct {
 		Result *models.Blocks `json:"result"`
 	}
-	fmt.Println("--------------- blockInfo", string(blockInfos))
+	// fmt.Println("--------------- blockInfo", string(blockInfos))
 	b := &res{}
 	err := json.Unmarshal(blockInfos, b)
 	if err != nil {
 		// return -1, err
 		fmt.Println("json.Unmarshal(blockInfo error", err)
 	}
-	fmt.Println("---------------json.Unmarshal ", b)
+	// fmt.Println("---------------json.Unmarshal ", b)
 
 	h, err := jsonparser.GetString(blockInfos, "result", "Height")
 	if err != nil {
 		fmt.Println("jsonparser.GetString error", err)
 	}
-	fmt.Println("---------------jsonparser.GetString", h)
-
-	coll := db.GetCollection("vct", "blocks")
-	// err = coll.Drop(context.Background())
+	he, _ := strconv.Atoi(h)
+	fmt.Println("---------------jsonparser. Height", he)
 
 	if b.Result.Height != "" {
-		docs := bson.M{
-			"height": b.Result.Height,
-			"hash":   b.Result.Hash,
-			"time":   b.Result.TimeStamp,
-		}
-
-		_, err = coll.InsertOne(context.Background(), docs)
-		if err != nil {
-			fmt.Println("insert one err", err)
-		}
-		// err = coll.Drop(context.Background())
 
 		txs := models.Transactions{
 			BlockHeight: b.Result.Height,
@@ -249,8 +240,7 @@ func readAndParseBlock(number int64) {
 		}
 
 		for _, item := range b.Result.Txs {
-			fmt.Println("item", item)
-			txs.TxID = item.TxID
+			txs.Txid = item.Txid
 			txs.Method = item.Method
 			if item.Method == "batch" {
 				jsonparser.ArrayEach(blockInfos, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
@@ -278,59 +268,33 @@ func readAndParseBlock(number int64) {
 
 		for _, item := range b.Result.Events {
 			// txs.From=item.
-			txs.TxID = item.TxID
+			txs.Txid = item.Txid
 			txs.Log = item.Detail
 			txs.OnChain = false
 
 		}
 
-		op := &options.FindOneAndUpdateOptions{}
-		op.SetUpsert(true)
-		// kModel.SendMsg("VCT_TX", string(blockInfos))
-		rs := db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.M{}, bson.D{{"$set", bson.M{"height": h}}}, op)
+		op := options.FindOneAndUpdate().SetUpsert(true)
+		// rs := db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.M{}, bson.D{{"$set", bson.M{"height": h}}}, op)
+		rs := db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.M{}, bson.M{"$set": bson.M{"height": he}}, op)
 		if rs.Err() != nil {
 			fmt.Println("FindOneAndUpdate err", rs.Err())
 		}
 
-		fmt.Println("FindOneAndUpdate", rs)
-		// db.GetCollection("vct", "transactions").FindOneAndUpdate(context.Background(), bson.D{}, bson.D{{"height", b.Result.Height}})
+		// docs := bson.M{
+		// 	"height": b.Result.Height,
+		// 	"hash":   b.Result.Hash,
+		// 	"time":   b.Result.TimeStamp,
+		// }
+		// _, err = db.GetCollection("vct", "blocks").FindOneAndUpdate(context.Background(), bson.M{}, bson.M{"$set": docs}, op)
+		// if err != nil {
+		// 	fmt.Println("insert one err", err)
+		// }
+
+		db.GetCollection("vct", "transactions").FindOneAndUpdate(context.Background(), bson.M{"txid": b.Result.Txid}, bson.M{"$set": txs}, op)
+
+		kModel.SendMsg("VCT_TX", blockInfos)
 	}
-	// if (blockInfo.result) {
-	// 	// 交易表
-	// 	// await that.db.models.Transaction.deleteMany({ blockId: height });
-
-	// 	logger.info(`开始查询第${height} 块,删除已有数据`)
-
-	// 	blockInfo = blockInfo.result
-	// 	logger.debug(`第${height} 块数据 ${JSON.stringify(blockInfo)}`)
-	// 	// blockInfo = that.testdata() // 手动构造数据测试
-	// 	const rawdata = {
-	// 		height: blockInfo.Height,
-	// 		hash: blockInfo.Hash,
-	// 		timestamp: blockInfo.TimeStamp,
-
-	// 		transactions: blockInfo.Transactions || [],
-	// 		txEvents: blockInfo.TxEvents || [],
-
-	// 		// time: Date.parse(blockInfo.TimeStamp.split('+')[0]),
-
-	// 		rawTime: blockInfo.TimeStamp,
-	// 		time: this.dateToUnix(blockInfo.TimeStamp),
-	// 	}
-
-	// 	const txLen = rawdata.transactions.length + rawdata.txEvents.length
-
-	// 	// logger.debug(`块 ${height} txLen ${txLen}`)
-
-	// 	// 保存原始数据
-	// 	await that.db.models.Block.findOneAndUpdate({ height }, { $set: Object.assign({}, rawdata, { txCount: txLen }) }, { upsert: true });
-
-	// 	const { transactions, txEvents, ...baseFileds } = rawdata
-
-	// 	// 一次读取块种50个交易记录
-
-	// 	if (transactions && transactions.length > 0) { // 上链信息
-	// 		for (const tx of transactions) {
 
 	// 			/**
 	// 			 *  {
@@ -358,24 +322,7 @@ func readAndParseBlock(number int64) {
 	// 				 "TxHash": "E102AB0080FDE0DB7A95487ACE99CFDBEF835F366A806A3AFDC8CA6E237033B8"
 	// 			 }
 	// 			 */
-	// 			const method = tx.Method.toLowerCase()
-	// 			const commonFields = {
-	// 				blockId: baseFileds.height,
-	// 				blockTime: baseFileds.time,
-	// 				blockHash: baseFileds.hash,
 
-	// 				txHash: tx.TxHash, // -------TxHash
-	// 				txid: tx.TxID,
-
-	// 				onchain: 1,
-	// 			}
-	// 			await that.paserTx(method, commonFields, tx.Detail)
-	// 		}
-	// 	}
-
-	// 	if (txEvents && txEvents.length > 0) { // 未上链信息 错误的事务信息
-	// 		// B80704BB7B4D7C03157D55B5E1B38BEC 查txid 可知道详情
-	// 		for (const txEvent of txEvents) {
 	// 			// {
 	// 			//     "TxID": "EEC34C367674CB741586E63A6DBC5DAC",
 	// 			//     "Chaincode": "local",
@@ -384,60 +331,10 @@ func readAndParseBlock(number int64) {
 	// 			//     "Detail": "Local invoke error: handling method [MTOKEN.INIT] fail: Can not re-deploy existed data"
 	// 			// }
 
-	// 			// 错误的事务 链上查询不到信息  后面保存token等信息表的先不做修改 不应该再考虑onchain =-1 问题
-	// 			// {
-	// 			//     "jsonrpc": "2.0",
-	// 			//     "error": {
-	// 			//         "code": 0,
-	// 			//         "message": "rpc error: code = Unknown desc = openchain: resource not found",
-	// 			//         "data": null
-	// 			//     }
-	// 			// }
-
-	// 			const tx = {
-	// 				blockId: baseFileds.height,
-	// 				blockTime: baseFileds.time,
-	// 				blockHash: baseFileds.hash,
-	// 				method: '',
-	// 				txid: txEvent.TxID,
-	// 				onchain: -1,
-	// 				rawcode: txEvent.Status,
-	// 				message: txEvent.Detail,
-	// 			}
-
-	// 			const model = that.db.models.Transaction(tx);
-	// 			await model.save()
-	// 			// const s = await model.save()
-	// 			// await that.sendTxMsg(s.toObject())
-
-	// 		}
-	// 	}
-	// 	await that.sendTxMsg({ txBlockHeight: height })
-	// 	// ---------------------------以下是浏览器需要的信息
-
-	// 	const info = await that.db.models.Info.findOne();
-
-	// 	//----------------------------------------------------
-
-	// 	// 更新所读的区块高度
-	// 	await that.db.models.Info.findOneAndUpdate({}, {
-	// 		$set: {
-	// 			height, time: rawdata.time, hash: rawdata.hash,
-	// 		},
-	// 	}, { upsert: true });
-
-	// 	logger.info(`-------------------第 ${height} 块 end --------------------------`);
-	// } else {
-	// 	// 查询失败 更新表
-	// 	await that.db.models.Info.findOneAndUpdate({}, { $set: { height } }, { upsert: true });
-	// 	logger.error(`-------------------第 ${height} 块 读取失败 --------------------------`);
-	// 	return
-	// }
 }
 
 func loopReadAndPaser() {
 	dbHeight := initLatestBlockNumber()
-	fmt.Println("------------loopReadAndPaser", dbHeight)
 	b := make(chan int)
 	for {
 		select {
@@ -449,11 +346,5 @@ func loopReadAndPaser() {
 				dbHeight++
 			}
 		}
-		// }
-		//  isNewBlockAvalible(dbHeight)
-		// 	// 解析区块及事务
-		// 	readAndParseBlock(dbHeight)
-		// 	dbHeight++
-		// }
 	}
 }

@@ -4,7 +4,7 @@ type Transactions struct {
 	BlockHeight string `json:"height"`
 	BlockTime   string `json:"blockTime"`
 	BlockHash   string `json:"blockHash"`
-	TxID        string `json:"txID"`
+	Txid        string `json:"txid"`
 	Method      string `json:"method"`
 	TxHash      string `json:"txHash"`
 	From        string `json:"from"`
