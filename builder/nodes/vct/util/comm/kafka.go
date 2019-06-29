@@ -12,6 +12,7 @@ type kkModel struct {
 	// Msg   string
 	Config   *sarama.Config
 	Producer sarama.SyncProducer
+	Consumer sarama.Consumer
 }
 
 type KInterface interface {
@@ -33,23 +34,21 @@ func NewProducer(Addrs []string) KInterface {
 	m := &kkModel{
 		Config:   config,
 		Producer: client,
+		Addrs:    Addrs,
 	}
 	return m
 }
 
 func NewConsumer(Addrs []string) KInterface {
-	config := sarama.NewConfig()
-	config.Producer.RequiredAcks = sarama.WaitForAll          //赋值为-1：这意味着producer在follower副本确认接收到数据后才算一次发送完成。
-	config.Producer.Partitioner = sarama.NewRandomPartitioner //写到随机分区中，默认设置8个分区
-	config.Producer.Return.Successes = true
-	client, err := sarama.NewConsumer(Addrs, config)
+	consumer, err := sarama.NewConsumer(Addrs, nil)
+
 	if err != nil {
-		fmt.Println("sarama.NewSyncProducer error:", err)
+		fmt.Println("sarama.NewConsumer error:", err)
 		return &kkModel{}
 	}
 	m := &kkModel{
-		Config:   config,
-		Producer: client,
+		Consumer: consumer,
+		Addrs:    Addrs,
 	}
 	return m
 }
@@ -69,40 +68,50 @@ func (k *kkModel) SendMsg(topic, data string) error {
 	return nil
 }
 
-func (k *kkModel) ReciveMsg() {
-	consumer, err := sarama.NewConsumer([]string{"localhost:9092"}, nil)
-
+func (k *kkModel) ReciveMsg() chan []byte {
+	ts, err := k.Consumer.Topics()
 	if err != nil {
-		panic(err)
+		fmt.Println("get topics error")
 	}
+	msgKey := make(chan []byte)
+	for _, to := range ts {
+		fmt.Println("topic", to)
+		partitionList, err := k.Consumer.Partitions(to)
 
-	partitionList, err := consumer.Partitions("testGo")
-
-	if err != nil {
-		panic(err)
-	}
-
-	for partition := range partitionList {
-		pc, err := consumer.ConsumePartition("testGo", int32(partition), sarama.OffsetNewest)
 		if err != nil {
-			panic(err)
+			fmt.Println("sarama.NewConsumer error:", err)
 		}
 
-		defer pc.AsyncClose()
+		for partition := range partitionList {
+			pc, err := k.Consumer.ConsumePartition(to, int32(partition), sarama.OffsetNewest)
+			if err != nil {
+				fmt.Println("sarama.NewConsumer error:", err)
+				// panic(err)
+			}
 
-		wg.Add(1)
+			defer pc.AsyncClose()
 
-		go func(sarama.PartitionConsumer) {
-			defer wg.Done()
+			// wg.Add(1)
+
 			for msg := range pc.Messages() {
+				msgKey <- msg.Key
 				fmt.Printf("Partition:%d, Offset:%d, Key:%s, Value:%s\n", msg.Partition, msg.Offset, string(msg.Key), string(msg.Value))
 			}
-		}(pc)
-		wg.Wait()
-		consumer.Close()
+
+			// go func(sarama.PartitionConsumer) {
+			// 	defer wg.Done()
+			// 	for msg := range pc.Messages() {
+			// 		fmt.Printf("Partition:%d, Offset:%d, Key:%s, Value:%s\n", msg.Partition, msg.Offset, string(msg.Key), string(msg.Value))
+			// 	}
+			// }(pc)
+			// wg.Wait()
+			// consumer.Close()
+		}
 	}
+	return msgKey
 }
 
 func (k *kkModel) Close() {
 	k.Producer.Close()
+	k.Consumer.Close()
 }
