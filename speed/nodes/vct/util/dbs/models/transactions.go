@@ -1,6 +1,6 @@
 package models
 
-type Transactions struct {
+type Transaction struct {
 	BlockHeight string `json:"height"`
 	BlockTime   string `json:"blockTime"`
 	BlockHash   string `json:"blockHash"`

@@ -67,7 +67,7 @@ func main() {
 
 	api := fmt.Sprintf("%s://%s:%s", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
 	chainConf = gchain.NewChainAPi(api)
-	kModel := comm.NewKafkaModel(viper.GetStringSlice("kafka.service"))
+	kModel = comm.NewProducer(viper.GetStringSlice("kafka.service"))
 	defer kModel.Close()
 	loopReadAndPaser()
 
@@ -232,7 +232,7 @@ func readAndParseBlock(number int64) {
 
 	if b.Result.Height != "" {
 
-		txs := models.Transactions{
+		txs := models.Transaction{
 			BlockHeight: b.Result.Height,
 			BlockTime:   b.Result.TimeStamp,
 			BlockHash:   b.Result.Hash,
