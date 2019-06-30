@@ -9,3 +9,10 @@ service:
     protocal: "http"
     host: 127.0.0.1
     port: 7799
+
+db:
+    addr: "127.0.0.1:27017"
+
+kafka:
+    service:
+        - "127.0.0.1:9092"

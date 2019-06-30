@@ -36,7 +36,7 @@ type ErrInfo struct {
 
 func NewChainAPi(url string) ChainApi {
 	return &api{
-		BaseURL: url + "api/v1",
+		BaseURL: url + "/api/v1",
 	}
 }
 
