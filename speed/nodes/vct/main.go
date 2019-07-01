@@ -293,7 +293,7 @@ func readAndParseBlock(number int64) {
 
 		db.GetCollection("vct", "transactions").FindOneAndUpdate(context.Background(), bson.M{"txid": b.Result.Txid}, bson.M{"$set": txs}, op)
 
-		kModel.SendMsg("VCT_TX", blockInfos)
+		kModel.SendMsg("VCT_TX", []byte(h))
 	}
 
 	// 			/**
