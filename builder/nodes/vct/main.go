@@ -4,6 +4,8 @@ import (
 	"century/oasis/builder/nodes/vct/util/chain"
 	"century/oasis/builder/nodes/vct/util/comm"
 	"century/oasis/builder/nodes/vct/util/dbs"
+	"century/oasis/builder/nodes/vct/util/dbs/models"
+	"context"
 	"flag"
 	"fmt"
 	"math/big"
@@ -12,8 +14,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/buger/jsonparser"
 	"github.com/json-iterator/go"
 	"github.com/spf13/viper"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var (
@@ -154,7 +159,7 @@ func InitViper(envprefix string, filename string, configPath ...string) error {
 
 func loopReadAndPaser() {
 	// dbHeight := initLatestBlockNumber()
-	b := make(chan int)
+	// b := make(chan int)
 	// for {
 	// 	select {
 	// 	case <-b:
@@ -168,13 +173,17 @@ func loopReadAndPaser() {
 	// 	}
 	// }
 	msg := make(chan []byte)
-	kModel.ReciveMsg(msg)
+	go func() {
+		kModel.ReciveMsg(msg)
+	}()
 
 	for {
 		select {
-		case <-b:
+
 		case m := <-msg:
 			paserTx(m)
+			// default:
+			// 	fmt.Println("++++++++++")
 		}
 	}
 
@@ -182,5 +191,112 @@ func loopReadAndPaser() {
 }
 
 func paserTx(msg []byte) {
-	fmt.Println("---------------")
+	fmt.Println("-+++++++++", string(msg))
+
+	h := string(msg)
+	// fmt.Println("-+++++++++", string(blockInfo))
+	type res struct {
+		Result *models.Blocks `json:"result"`
+	}
+	// fmt.Println("--------------- blockInfo", string(blockInfos))
+	coror, err := db.GetCollection("vct", "transactions").Find(context.Background(), bson.M{"blockheight": h})
+
+	if err != nil {
+		fmt.Println("get transferaction error")
+	}
+
+	if b.Result.Height != "" {
+
+		txs := models.Transaction{
+			BlockHeight: b.Result.Height,
+			BlockTime:   b.Result.TimeStamp,
+			BlockHash:   b.Result.Hash,
+			OnChain:     true,
+		}
+
+		for _, item := range b.Result.Txs {
+			txs.Txid = item.Txid
+			txs.Method = item.Method
+			if item.Method == "batch" {
+				jsonparser.ArrayEach(blockInfos, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+					m, err := jsonparser.GetString(value, "Method")
+					if err != nil {
+						fmt.Println("jsonparser.GetString Method error", err)
+					}
+					if m == assign {
+						to, _ := jsonparser.GetString(value, "Method", "to")
+						token, _ := jsonparser.GetString(value, "Method", "name")
+						txs.To = to
+						txs.TokenKey = token
+					}
+
+				}, "result", "Transactions", "Detail")
+
+			} else {
+				fmt.Println("item.Detail  not batch", item.Detail)
+				txs.From = item.Detail.From
+				txs.To = item.Detail.To
+				txs.Value = item.Detail.Amount
+				txs.TokenKey = item.Detail.Token
+			}
+		}
+
+		for _, item := range b.Result.Events {
+			// txs.From=item.
+			txs.Txid = item.Txid
+			txs.Log = item.Detail
+			txs.OnChain = false
+
+		}
+
+		op := options.FindOneAndUpdate().SetUpsert(true)
+
+		// docs := bson.M{
+		// 	"height": b.Result.Height,
+		// 	"hash":   b.Result.Hash,
+		// 	"time":   b.Result.TimeStamp,
+		// }
+		// _, err = db.GetCollection("vct", "blocks").FindOneAndUpdate(context.Background(), bson.M{}, bson.M{"$set": docs}, op)
+		// if err != nil {
+		// 	fmt.Println("insert one err", err)
+		// }
+
+		db.GetCollection("vct", "transactions").FindOneAndUpdate(context.Background(), bson.M{"txid": b.Result.Txid}, bson.M{"$set": txs}, op)
+	}
+
+	// 			/**
+	// 			 *  {
+	// 				 "Height": "4",
+	// 				 "TxID": "365A858149C6E2D115868BF811B28E24",
+	// 				 "Chaincode": "local",
+	// 				 "Method": "batch",
+	// 				 "CreatedFlag": false,
+	// 				 "ChaincodeModule": "AtomicEnergy_v1",
+	// 				 "Nonce": "EBCD3BC27E8F541A4215960088E6550D6A4D2D9B",
+	// 				 "Detail": [
+	// 					 {
+	// 						 "Method": "MTOKEN.INIT",
+	// 						 "Detail": "VCT31: Unknown message"
+	// 					 },
+	// 					 {
+	// 						 "Method": "MTOKEN.ASSIGN",
+	// 						 "Detail": {
+	// 							 "amount": "1000000000000000000000000000",
+	// 							 "to": "ARJtq6Q46oTnxDwvVqMgDtZeNxs7Ybt81A",
+	// 							 "token": "VCT31"
+	// 						 }
+	// 					 }
+	// 				 ],
+	// 				 "TxHash": "E102AB0080FDE0DB7A95487ACE99CFDBEF835F366A806A3AFDC8CA6E237033B8"
+	// 			 }
+	// 			 */
+
+	// 			// {
+	// 			//     "TxID": "EEC34C367674CB741586E63A6DBC5DAC",
+	// 			//     "Chaincode": "local",
+	// 			//     "Name": "INVOKEERROR",
+	// 			//     "Status": 1,
+	// 			//     "Detail": "Local invoke error: handling method [MTOKEN.INIT] fail: Can not re-deploy existed data"
+	// 			// }
+
 }

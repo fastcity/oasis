@@ -2,7 +2,6 @@ package comm
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/Shopify/sarama"
 )
@@ -132,7 +131,10 @@ func (k *kkModel) Close() {
 func findAll(strs []string) []string {
 	s := []string{}
 	for _, str := range strs {
-		if strings.HasPrefix(str, "VCT") {
+		// if strings.HasPrefix(str, "VCT") {
+		// 	s = append(s, str)
+		// }
+		if str == "VCT_TX" {
 			s = append(s, str)
 		}
 	}
