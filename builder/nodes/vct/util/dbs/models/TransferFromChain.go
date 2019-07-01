@@ -1,18 +1,31 @@
 package models
 
-type Transaction struct {
-	BlockHeight string `bson:"blockHeight"`
-	BlockTime   string `bson:"blockTime"`
-	BlockHash   string `bson:"blockHash"`
-	Txid        string `bson:"txid"`
-	Method      string `bson:"method"`
-	TxHash      string `bson:"txHash"`
+type TransferFromChain struct {
+	// BlockHeight string `json:"height"`
+	// BlockTime   string `json:"blockTime"`
+	// BlockHash   string `json:"blockHash"`
+	// Txid        string `json:"txid"`
+	// Method      string `json:"method"`
+	// TxHash      string `json:"txHash"`
+	// From        string `json:"from"`
+	// To          string `json:"to"`
+	// Value       string `json:"value"`
+	// TokenKey    string `json:"token"`
+	// OnChain     bool   `json:"onChain"`
+	// Log         string `json:"log"`
+	RequestId   string `bson:"-"`
+	Chain       string `bson:"-"`
+	Coin        string `bson:"-"`
+	TokenKey    string `bson:"tokenkey"`
 	From        string `bson:"from"`
 	To          string `bson:"to"`
 	Value       string `bson:"value"`
-	TokenKey    string `bson:"token"`
-	OnChain     bool   `bson:"onChain"`
-	Log         string `bson:"log"`
+	Txid        string `bson:"txid"`
+	BlockHeight string `bson:"blockheight"`
+	BlockTime   string `bson:"blocktime"`
+
+	// createdAt: { type: Number, default: Date.now },
+	// updatedAt: { type: Number, default: Date.now },
 }
 
 // 		"Height": "1",
