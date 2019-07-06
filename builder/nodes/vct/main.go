@@ -18,6 +18,7 @@ import (
 	"github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var (
@@ -233,6 +234,8 @@ func paserTx(msg []byte) {
 		} else {
 
 		}
+
+		newTranferFromChain(tfc)
 		// if tx.BlockHeight != "" {
 		// 	tx.Chain = "VCT"
 		// 	tx.Coin = "VCT_TOKEN"
@@ -241,10 +244,25 @@ func paserTx(msg []byte) {
 		// 	db.GetCollection("vct", "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, bson.M{"$set": tx}, op)
 		// }
 	}
+}
 
+func newTranferFromChain(tfc models.TransferFromChain) {
+	tx := tfc
+	op := options.FindOneAndUpdate().SetUpsert(true)
+	ctx := context.Background()
+	where := bson.M{"txid": tx.Txid}
+	ttcResult := db.GetCollection("vct", "transferTochains").FindOne(ctx, where)
 
-
-func	newTranferFromChain(tfc models.TransferFromChain){
-
+	var updateStr bson.M
+	if ttcResult != nil && ttcResult.Err() == nil {
+		ttc := models.TransferToChain{}
+		ttcResult.Decode(&ttc)
+		tx.ID = ttc.ID
+		updateStr = bson.M{"$set": tx}
+	} else {
+		updateStr = bson.M{"$set": tx}
 	}
+
+	db.GetCollection("vct", "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
+
 }

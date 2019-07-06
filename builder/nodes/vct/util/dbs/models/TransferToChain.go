@@ -2,7 +2,7 @@ package models
 
 import "go.mongodb.org/mongo-driver/bson/primitive"
 
-type TransferFromChain struct {
+type TransferToChain struct {
 	// BlockHeight string `json:"height"`
 	// BlockTime   string `json:"blockTime"`
 	// BlockHash   string `json:"blockHash"`
