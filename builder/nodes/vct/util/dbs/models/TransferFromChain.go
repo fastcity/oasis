@@ -26,7 +26,8 @@ type TransferFromChain struct {
 	Txid        string             `bson:"txid"`
 	BlockHeight string             `bson:"blockheight"`
 	BlockTime   string             `bson:"blocktime"`
-
+	CreatedAt   int64              `bson:"createdAt"`
+	UpdatedAt   int64              `bson:"updatedAt"`
 	// createdAt: { type: Number, default: Date.now },
 	// updatedAt: { type: Number, default: Date.now },
 }

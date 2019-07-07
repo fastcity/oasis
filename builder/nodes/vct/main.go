@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/json-iterator/go"
 	"github.com/spf13/viper"
@@ -235,7 +236,7 @@ func paserTx(msg []byte) {
 
 		}
 
-		newTranferFromChain(tfc)
+		newTranferFromChain(tfc, false)
 		// if tx.BlockHeight != "" {
 		// 	tx.Chain = "VCT"
 		// 	tx.Coin = "VCT_TOKEN"
@@ -246,23 +247,27 @@ func paserTx(msg []byte) {
 	}
 }
 
-func newTranferFromChain(tfc models.TransferFromChain) {
+func newTranferFromChain(tfc models.TransferFromChain, haveComfirming bool) {
 	tx := tfc
+	dbname := tx.Chain
+	tx.CreatedAt = time.Now().Unix()
 	op := options.FindOneAndUpdate().SetUpsert(true)
 	ctx := context.Background()
 	where := bson.M{"txid": tx.Txid}
-	ttcResult := db.GetCollection("vct", "transferTochains").FindOne(ctx, where)
+	ttcResult := db.GetCollection(dbname, "transferTochains").FindOne(ctx, where)
 
 	var updateStr bson.M
 	if ttcResult != nil && ttcResult.Err() == nil {
 		ttc := models.TransferToChain{}
 		ttcResult.Decode(&ttc)
 		tx.ID = ttc.ID
-		updateStr = bson.M{"$set": tx}
-	} else {
-		updateStr = bson.M{"$set": tx}
+		tx.RequestId = ttc.RequestId
+		// updateStr = bson.M{"$set": tx}
 	}
+	updateStr = bson.M{"$set": tx}
 
-	db.GetCollection("vct", "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
+	if !haveComfirming {
+		db.GetCollection(dbname, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
+	}
 
 }
