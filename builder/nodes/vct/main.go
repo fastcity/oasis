@@ -53,9 +53,6 @@ func main() {
 		// viper.AddConfigPath(path)
 		InitViper(strings.ToLower(chain), strings.ToLower(chain), path)
 	}
-	// host := viper.GetString("service.host")
-	// port := viper.GetString("service.port")
-	// router(host + ":" + port)
 
 	db = dbs.New(viper.GetString("db.addr"))
 	err := db.GetConn()
@@ -70,7 +67,10 @@ func main() {
 	// 	fmt.Println("init kafka fail-------")
 	// }
 	defer kModel.Close()
-	loopReadAndPaser()
+	go loopReadAndPaser()
+	nodeURL := fmt.Sprintf("%s:%s", viper.GetString("service.host"), viper.GetString("service.port"))
+	fmt.Println("nodeURL", nodeURL)
+	router(nodeURL)
 
 }
 
@@ -78,10 +78,8 @@ func router(url string) {
 	http.HandleFunc("/api/v1/createTransferTxDta", createTransactionDataHandler)
 	http.HandleFunc("/api/v1/submitTxDta", submitTxDtaHandler)
 	http.HandleFunc("/api/v1/getBlockHeight", getBlockHeight)
-	// http.HandleFunc("/login/", loginHandler)
-	// http.HandleFunc("/ajax/", ajaxHandler)
-	// http.HandleFunc("/", NotFoundHandler)
-	err := http.ListenAndServe(url, nil)
+
+	err := http.ListenAndServe(":7799", nil)
 	if err != nil {
 		fmt.Println("http listen failed.", err)
 	}
@@ -123,7 +121,7 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getBlockHeight(w http.ResponseWriter, r *http.Request) {
-
+	fmt.Println("-------------- getBlockHeight")
 	h, err := chainConf.GetBlockHeight()
 	if err != nil {
 		fmt.Println("--------------err", err)
@@ -159,20 +157,6 @@ func InitViper(envprefix string, filename string, configPath ...string) error {
 }
 
 func loopReadAndPaser() {
-	// dbHeight := initLatestBlockNumber()
-	// b := make(chan int)
-	// for {
-	// 	select {
-	// 	case <-b:
-	// 	case <-time.After(time.Second * 1):
-	// 		// if isNewBlockAvalible(dbHeight) {
-	// 		// 	// 解析区块及事务
-	// 		// 	readAndParseBlock(dbHeight)
-	// 		// 	dbHeight++
-	// 		// }
-	// 		kModel.ReciveMsg()
-	// 	}
-	// }
 	msg := make(chan []byte)
 	go func() {
 		kModel.ReciveMsg(msg)
@@ -182,18 +166,19 @@ func loopReadAndPaser() {
 		select {
 
 		case m := <-msg:
-			paserTx(m)
-			// default:
-			// 	fmt.Println("++++++++++")
+			tfcs := paserTx(m)
+			for _, tfc := range tfcs {
+				newTranferFromChain(tfc, false)
+			}
 		}
 	}
 
 	// kModel.ReciveMsg()
 }
 
-func paserTx(msg []byte) {
+func paserTx(msg []byte) []models.TransferFromChain {
 	fmt.Println("-+++++++++", string(msg))
-
+	tfcs := []models.TransferFromChain{}
 	h := string(msg)
 	// fmt.Println("-+++++++++", string(blockInfo))
 	type res struct {
@@ -235,8 +220,8 @@ func paserTx(msg []byte) {
 		} else {
 
 		}
+		tfcs = append(tfcs, tfc)
 
-		newTranferFromChain(tfc, false)
 		// if tx.BlockHeight != "" {
 		// 	tx.Chain = "VCT"
 		// 	tx.Coin = "VCT_TOKEN"
@@ -245,6 +230,7 @@ func paserTx(msg []byte) {
 		// 	db.GetCollection("vct", "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, bson.M{"$set": tx}, op)
 		// }
 	}
+	return tfcs
 }
 
 func newTranferFromChain(tfc models.TransferFromChain, haveComfirming bool) {
