@@ -75,11 +75,11 @@ func main() {
 }
 
 func router(url string) {
-	http.HandleFunc("/api/v1/createTransferTxDta", createTransactionDataHandler)
+	http.HandleFunc("/api/v1/createTransferTxData", createTransactionDataHandler)
 	http.HandleFunc("/api/v1/submitTxDta", submitTxDtaHandler)
 	http.HandleFunc("/api/v1/getBlockHeight", getBlockHeight)
 
-	err := http.ListenAndServe(":7799", nil)
+	err := http.ListenAndServe(url, nil)
 	if err != nil {
 		fmt.Println("http listen failed.", err)
 	}
@@ -95,10 +95,11 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 
 	if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
 		// s.NormalErrorF(rw, 0, "Invalid amount")
-		fmt.Println("Invalid amount")
+		fmt.Fprintln(w, "Invalid amount")
 		return
 	}
-	chainConf.CreateTransactionData(from, to, tokenKey, amount)
+	res, _ := chainConf.CreateTransactionData(from, to, tokenKey, amount)
+	fmt.Fprintln(w, res)
 
 }
 
@@ -112,12 +113,11 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 	amount, ok := big.NewInt(0).SetString(r.PostFormValue("value"), 0)
 
 	if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
-		// s.NormalErrorF(rw, 0, "Invalid amount")
-		fmt.Println("Invalid amount")
+		fmt.Fprintln(w, "Invalid amount")
 		return
 	}
-	chainConf.CreateTransactionData(from, to, tokenKey, amount)
-
+	res, _ := chainConf.CreateTransactionData(from, to, tokenKey, amount)
+	fmt.Fprintln(w, res)
 }
 
 func getBlockHeight(w http.ResponseWriter, r *http.Request) {
