@@ -86,20 +86,24 @@ func router(url string) {
 }
 
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
-	from := r.PostFormValue("from")
-	to := r.PostFormValue("to")
-	// value := r.PostFormValue("value")
-	tokenKey := r.PostFormValue("tokenKey")
+	if r.Method == "POST" {
+		from := r.PostFormValue("from")
+		to := r.PostFormValue("to")
+		// value := r.PostFormValue("value")
+		tokenKey := r.PostFormValue("tokenKey")
 
-	amount, ok := big.NewInt(0).SetString(r.PostFormValue("value"), 0)
+		amount, ok := big.NewInt(0).SetString(r.PostFormValue("value"), 0)
 
-	if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
-		// s.NormalErrorF(rw, 0, "Invalid amount")
-		fmt.Fprintln(w, "Invalid amount")
-		return
+		if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
+			// s.NormalErrorF(rw, 0, "Invalid amount")
+			fmt.Fprintln(w, "Invalid amount")
+			return
+		}
+		res, _ := chainConf.CreateTransactionData(from, to, tokenKey, amount)
+		fmt.Fprintln(w, res)
+	} else {
+		fmt.Fprintln(w, "only Post ")
 	}
-	res, _ := chainConf.CreateTransactionData(from, to, tokenKey, amount)
-	fmt.Fprintln(w, res)
 
 }
 
@@ -231,6 +235,70 @@ func paserTx(msg []byte) []models.TransferFromChain {
 		// }
 	}
 	return tfcs
+}
+
+func setSendTransactionTxid(requestID, txid string) {
+	// const transfer = await this.commdb.models.Transfer.findById(mid)
+	commDb := "dynasty"
+	where := bson.M{"_id": requestID}
+	ctx := context.Background()
+	result := db.GetCollection(commDb, "transfers").FindOne(ctx, where)
+	if result.Err() != nil {
+		fmt.Errorf("%s \n", "transfer not found!")
+	}
+	// if !transfer {
+	// 	fmt.Errorf("%s \n", "transfer not found!")
+	// 	return
+	// }
+	// 更新转账操作记录
+	updateStr := bson.M{"$set": bson.M{"txid": txid, "code": 16, "status": `TXID`, "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": `TX_HASH at: ${Date.now()}`}}
+	db.GetCollection(commDb, "transfers").FindOneAndUpdate(ctx, requestID, updateStr)
+	// // 更新转账账单记录
+	// const updateStr1 = { $set: { code: 16, txid, updatedAt: Date.now() } }
+	// const tc = await this.chaindb.models.TransferToChain.findOneAndUpdate({ requestId: mid }, updateStr1)
+
+	// // 构造消息
+	// const { _account } = transfer
+	// const notifyData = {
+	// 	status: 'SUBMIT_TRANSACTION_TO_CHAIN',
+	// 	description: 'submit transfer transaction to chain',
+	// 	requestId: mid,
+	// 	tfcId: tc._id,
+	// 	txid,
+	// }
+	// await this.sendNotify('TRANSFER_ACTION', notifyData, _account)
+}
+
+func setSendTransactionError(requestID, txid string) {
+	// const transfer = await this.commdb.models.Transfer.findById(mid)
+	commDb := "dynasty"
+	where := bson.M{"_id": requestID}
+	ctx := context.Background()
+	result := db.GetCollection(commDb, "transfers").FindOneAndDelete(ctx, where)
+	if result.Err() != nil {
+		fmt.Errorf("%s \n", "transfer not found!")
+	}
+	// if !transfer {
+	// 	fmt.Errorf("%s \n", "transfer not found!")
+	// 	return
+	// }
+	// 更新转账操作记录
+	updateStr := bson.M{"$set": bson.M{"txid": txid, "code": 16, "status": `TXID`, "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": `TX_HASH at: ${Date.now()}`}}
+	db.GetCollection(commDb, "transfers").FindOneAndUpdate(ctx, requestID, updateStr)
+	// // 更新转账账单记录
+	// const updateStr1 = { $set: { code: 16, txid, updatedAt: Date.now() } }
+	// const tc = await this.chaindb.models.TransferToChain.findOneAndUpdate({ requestId: mid }, updateStr1)
+
+	// // 构造消息
+	// const { _account } = transfer
+	// const notifyData = {
+	// 	status: 'SUBMIT_TRANSACTION_TO_CHAIN',
+	// 	description: 'submit transfer transaction to chain',
+	// 	requestId: mid,
+	// 	tfcId: tc._id,
+	// 	txid,
+	// }
+	// await this.sendNotify('TRANSFER_ACTION', notifyData, _account)
 }
 
 func newTranferFromChain(tfc models.TransferFromChain, haveComfirming bool) {
