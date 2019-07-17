@@ -31,6 +31,8 @@ var (
 	chainConf          gchain.ChainApi
 	kModel             comm.KInterface
 	assign             = "TOKEN.ASSIGN"
+	commdb             = "dynasty"
+	chaindb            = "vct"
 )
 
 // Result 返回结果
@@ -239,23 +241,25 @@ func paserTx(msg []byte) []models.TransferFromChain {
 
 func setSendTransactionTxid(requestID, txid string) {
 	// const transfer = await this.commdb.models.Transfer.findById(mid)
-	commDb := "dynasty"
+
 	where := bson.M{"_id": requestID}
 	ctx := context.Background()
-	result := db.GetCollection(commDb, "transfers").FindOne(ctx, where)
+	result := db.GetCollection(commdb, "transfers").FindOne(ctx, where)
 	if result.Err() != nil {
-		fmt.Errorf("%s \n", "transfer not found!")
+		fmt.Println("%s", "transfer not found!")
 	}
-	// if !transfer {
-	// 	fmt.Errorf("%s \n", "transfer not found!")
-	// 	return
-	// }
 	// 更新转账操作记录
 	updateStr := bson.M{"$set": bson.M{"txid": txid, "code": 16, "status": `TXID`, "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": `TX_HASH at: ${Date.now()}`}}
-	db.GetCollection(commDb, "transfers").FindOneAndUpdate(ctx, requestID, updateStr)
+	db.GetCollection(commdb, "transfers").FindOneAndUpdate(ctx, where, updateStr)
 	// // 更新转账账单记录
-	// const updateStr1 = { $set: { code: 16, txid, updatedAt: Date.now() } }
-	// const tc = await this.chaindb.models.TransferToChain.findOneAndUpdate({ requestId: mid }, updateStr1)
+	updateStr1 := bson.M{"$set": bson.M{"code": 16, "txid": txid, "updatedAt": time.Now().Unix()}}
+	tc := db.GetCollection(chaindb, "transferstochains").FindOneAndUpdate(ctx, bson.M{"requestId": requestID}, updateStr1)
+
+	if tc.Err() != nil {
+		fmt.Println("error", tc.Err())
+	}
+	tcdecode := models.TransferToChain{}
+	tc.Decode(&tcdecode)
 
 	// // 构造消息
 	// const { _account } = transfer
@@ -267,9 +271,16 @@ func setSendTransactionTxid(requestID, txid string) {
 	// 	txid,
 	// }
 	// await this.sendNotify('TRANSFER_ACTION', notifyData, _account)
+	notifyData := map[string]string{
+		"status":    "SUBMIT_TRANSACTION_TO_CHAIN",
+		"requestId": requestID,
+		"tfcId":     tcdecode.ID.String(),
+		"txid":      txid,
+	}
+	sendNotify("TRANSFER_ACTION", tcdecode.From, "", notifyData) //TODO : _account
 }
 
-func setSendTransactionError(requestID, txid string) {
+func setSendTransactionError(requestID, msg string) {
 	// const transfer = await this.commdb.models.Transfer.findById(mid)
 	commDb := "dynasty"
 	chaindb := "vct"
@@ -284,12 +295,19 @@ func setSendTransactionError(requestID, txid string) {
 	// 	return
 	// }
 	// 更新转账操作记录
-	updateStr := bson.M{"$set": bson.M{"txid": txid, "code": 16, "status": `TXID`, "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": `TX_HASH at: ${Date.now()}`}}
+	updateStr := bson.M{"$set": bson.M{"code": -1, "status": `ERROR`, "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": `TX_ERROR at: ${Date.now()}` + msg}}
 	db.GetCollection(commDb, "transfers").FindOneAndUpdate(ctx, where, updateStr)
 	// // 更新转账账单记录
 	// const updateStr1 = { $set: { code: 16, txid, updatedAt: Date.now() } }
 	// const tc = await this.chaindb.models.TransferToChain.findOneAndUpdate({ requestId: mid }, updateStr1)
+	// // 更新转账账单记录
+	tc := db.GetCollection(chaindb, "transferstochains").FindOneAndDelete(ctx, bson.M{"requestId": requestID})
 
+	if tc.Err() != nil {
+		fmt.Println("error", tc.Err())
+	}
+	tcdecode := models.TransferToChain{}
+	tc.Decode(&tcdecode)
 	// // 构造消息
 	// const { _account } = transfer
 	// const notifyData = {
@@ -300,6 +318,15 @@ func setSendTransactionError(requestID, txid string) {
 	// 	txid,
 	// }
 	// await this.sendNotify('TRANSFER_ACTION', notifyData, _account)
+	notifyData := map[string]string{
+		"status":    "SUBMIT_TRANSACTION_ERROR",
+		"requestId": requestID,
+		"tfcId":     tcdecode.ID.String(),
+		// "txid":      txid,
+		"error": msg,
+	}
+
+	sendNotify("TRANSFER_ACTION", tcdecode.From, "", notifyData) //TODO : _account
 }
 
 func newTranferFromChain(tfc models.TransferFromChain, haveComfirming bool) {
@@ -323,6 +350,8 @@ func newTranferFromChain(tfc models.TransferFromChain, haveComfirming bool) {
 
 	if !haveComfirming {
 		db.GetCollection(dbname, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
+	} else {
+		// db.GetCollection(dbname, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
 	}
 
 }
@@ -430,4 +459,18 @@ func newBlockNotify(blockNumber string) {
 	// } finally {
 	// 	// this.inProcess = false
 	// }
+}
+
+func sendNotify(key, accountID, address string, data interface{}) {
+
+	// op := options.FindOneAndUpdate().SetUpsert(true)
+	insertresult, err := db.GetCollection(commdb, "notifytasks").InsertOne(context.Background(), bson.M{"key": key, "data": data, "address": address, "_account": accountID})
+
+	if err != nil {
+		fmt.Println("通知 消息 存库失败", err)
+	}
+
+	// const task = new this.commdb.models.NotifyTask({ key, data, _account: accountId, address })
+	// const s = await task.save()
+	// this.sendToKafka({ accountId, id: s._id }, 'NOTIFY_TASK', key)
 }
