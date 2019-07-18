@@ -80,6 +80,7 @@ func router(url string) {
 	http.HandleFunc("/api/v1/createTransferTxData", createTransactionDataHandler)
 	http.HandleFunc("/api/v1/submitTxDta", submitTxDtaHandler)
 	http.HandleFunc("/api/v1/getBlockHeight", getBlockHeight)
+	http.HandleFunc("/api/v1/getBalance", getBalance)
 
 	err := http.ListenAndServe(url, nil)
 	if err != nil {
@@ -128,6 +129,25 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 
 func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("-------------- getBlockHeight")
+	h, err := chainConf.GetBlockHeight()
+	if err != nil {
+		fmt.Println("--------------err", err)
+	}
+
+	res := &Result{
+		Code: 0,
+		Data: map[string]interface{}{
+			"Height": h,
+		},
+	}
+
+	b, _ := json.Marshal(res)
+
+	fmt.Fprintln(w, string(b))
+}
+
+func getBalance(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("-------------- getBalance")
 	h, err := chainConf.GetBlockHeight()
 	if err != nil {
 		fmt.Println("--------------err", err)

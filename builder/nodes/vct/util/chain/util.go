@@ -19,6 +19,7 @@ type api struct {
 type ChainApi interface {
 	GetBlockHeight() (height int64, err error)
 	GetBlockInfo(height int64) ([]byte, error)
+	GetBalance(address string) (balance string, err error)
 	CreateTransactionData(from, to, tokenKey string, amount *big.Int) (*Response, error)
 	SubmitTransactionData(rawtx, signStr string) (*Response, error)
 }
@@ -76,6 +77,33 @@ func (u *api) GetBlockHeight() (height int64, err error) {
 	// return "-1", nil
 
 	// return resp.Result["Height"], nil
+}
+
+// GetBlockHeight 获取块高
+func (u *api) GetBalance(address string) (balance string, err error) {
+	url := u.BaseURL + "/addess/" + address
+
+	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
+	body, err := u.apiGet(url)
+	if err != nil {
+		return "0", err
+	}
+	type response struct {
+		Result map[string]string `json:"result"`
+		Error  ErrInfo           `json:"error"`
+	}
+	resp := &response{}
+	err = json.Unmarshal(body, resp)
+	if err != nil {
+		return "0", err
+	}
+	// return res, nil
+	if resp.Error.Message != "" {
+		return "0", errors.New(resp.Error.Message)
+	}
+	// fmt.Println("GetBlockHeight", resp)
+
+	return resp.Result["Balance"], nil
 }
 
 func (u *api) GetBlockInfo(height int64) ([]byte, error) {
