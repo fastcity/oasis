@@ -8,7 +8,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -70,54 +69,6 @@ func main() {
 	kModel = comm.NewProducer(viper.GetStringSlice("kafka.service"))
 	defer kModel.Close()
 	loopReadAndPaser()
-
-}
-
-func router(url string) {
-	http.HandleFunc("/api/v1/createTransferTxDta", createTransactionDataHandler)
-	http.HandleFunc("/api/v1/submitTxDta", submitTxDtaHandler)
-	http.HandleFunc("/api/v1/getBlockHeight", getBlockHeight)
-	// http.HandleFunc("/login/", loginHandler)
-	// http.HandleFunc("/ajax/", ajaxHandler)
-	// http.HandleFunc("/", NotFoundHandler)
-	err := http.ListenAndServe(url, nil)
-	if err != nil {
-		fmt.Println("http listen failed.", err)
-	}
-}
-
-func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
-	from := r.PostFormValue("from")
-	to := r.PostFormValue("to")
-	// value := r.PostFormValue("value")
-	tokenKey := r.PostFormValue("tokenKey")
-
-	amount, ok := big.NewInt(0).SetString(r.PostFormValue("value"), 0)
-
-	if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
-		// s.NormalErrorF(rw, 0, "Invalid amount")
-		fmt.Println("Invalid amount")
-		return
-	}
-	chainConf.CreateTransactionData(from, to, tokenKey, amount)
-
-}
-
-func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
-
-	from := r.PostFormValue("from")
-	to := r.PostFormValue("to")
-
-	tokenKey := r.PostFormValue("tokenKey")
-
-	amount, ok := big.NewInt(0).SetString(r.PostFormValue("value"), 0)
-
-	if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
-		// s.NormalErrorF(rw, 0, "Invalid amount")
-		fmt.Println("Invalid amount")
-		return
-	}
-	chainConf.CreateTransactionData(from, to, tokenKey, amount)
 
 }
 

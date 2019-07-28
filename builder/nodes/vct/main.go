@@ -37,8 +37,8 @@ var (
 
 // Result 返回结果
 type Result struct {
-	Code int                    `json:code`
-	Data map[string]interface{} `json:Data`
+	Code int                    `json:"code"`
+	Data map[string]interface{} `json:"data"`
 }
 
 func main() {
@@ -62,8 +62,6 @@ func main() {
 		fmt.Println("connect mongo error", err)
 	}
 
-	api := fmt.Sprintf("%s://%s:%s", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
-	chainConf = gchain.NewChainAPi(api)
 	kModel = comm.NewConsumer(viper.GetStringSlice("kafka.service"))
 	// if kModel.Consumer == nil {
 	// 	fmt.Println("init kafka fail-------")
@@ -77,6 +75,9 @@ func main() {
 }
 
 func router(url string) {
+	api := fmt.Sprintf("%s://%s:%s", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
+	chainConf = gchain.NewChainAPi(api)
+
 	http.HandleFunc("/api/v1/createTransferTxData", createTransactionDataHandler)
 	http.HandleFunc("/api/v1/submitTxDta", submitTxDtaHandler)
 	http.HandleFunc("/api/v1/getBlockHeight", getBlockHeight)
@@ -89,10 +90,9 @@ func router(url string) {
 }
 
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
+	if r.Method == http.MethodPost {
 		from := r.PostFormValue("from")
 		to := r.PostFormValue("to")
-		// value := r.PostFormValue("value")
 		tokenKey := r.PostFormValue("tokenKey")
 
 		amount, ok := big.NewInt(0).SetString(r.PostFormValue("value"), 0)
@@ -148,7 +148,8 @@ func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 
 func getBalance(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("-------------- getBalance")
-	h, err := chainConf.GetBlockHeight()
+	address := r.PostFormValue("address")
+	b, err := chainConf.GetBalance(address)
 	if err != nil {
 		fmt.Println("--------------err", err)
 	}
@@ -156,13 +157,14 @@ func getBalance(w http.ResponseWriter, r *http.Request) {
 	res := &Result{
 		Code: 0,
 		Data: map[string]interface{}{
-			"Height": h,
+			"balance": b,
 		},
 	}
 
-	b, _ := json.Marshal(res)
+	ba, _ := json.Marshal(res)
+	w.Write(ba)
 
-	fmt.Fprintln(w, string(b))
+	// fmt.Fprintln(w, string(ba))
 }
 
 //InitViper we can set viper which fabric peer is used
@@ -381,7 +383,7 @@ func newBlockNotify(blockNumber string) {
 
 	// this.inProcess = true
 	chaindb := "vct"
-	commdb := "dynasty"
+	// commdb := "dynasty"
 	ctx := context.Background()
 	// const safeBlockNumber = blockNumber - this.confirmedMaxNum + 1
 	// // this.logger.info('[DynastyThreadUtil:newBlockNotify]', blockNumber, 'safeBlockNumber', safeBlockNumber)
@@ -391,7 +393,7 @@ func newBlockNotify(blockNumber string) {
 	if err != nil {
 		fmt.Println("transfer not found!")
 	}
-	if result.Next() {
+	if result.Next(ctx) {
 
 	}
 
@@ -489,7 +491,7 @@ func sendNotify(key, accountID, address string, data interface{}) {
 	if err != nil {
 		fmt.Println("通知 消息 存库失败", err)
 	}
-
+	fmt.Println("insertresult", insertresult)
 	// const task = new this.commdb.models.NotifyTask({ key, data, _account: accountId, address })
 	// const s = await task.save()
 	// this.sendToKafka({ accountId, id: s._id }, 'NOTIFY_TASK', key)
