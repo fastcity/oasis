@@ -122,8 +122,10 @@ func (u *api) CreateTransactionData(from, to, tokenKey string, amount *big.Int) 
 	url := u.BaseURL
 	if !isEmpty(tokenKey) {
 		url = url + "/data/token." + tokenKey + "/fund"
+	} else {
+		url = url + `/data/fund`
 	}
-	url = url + `/data/fund`
+
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
 	body := fmt.Sprintf("from=%s&to=%s&amount=%s", from, to, amount)
 	resp, err := u.apiPost(url, body)

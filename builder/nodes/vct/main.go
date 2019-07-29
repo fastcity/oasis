@@ -96,20 +96,56 @@ func JSON(w http.ResponseWriter, data interface{}) error {
 }
 
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("createTransactionDataHandler------")
 	if r.Method == http.MethodPost {
 		from := r.PostFormValue("from")
 		to := r.PostFormValue("to")
 		tokenKey := r.PostFormValue("tokenKey")
-
+		fmt.Println("from", from, "to", to)
 		amount, ok := big.NewInt(0).SetString(r.PostFormValue("value"), 0)
 
 		if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
 			// s.NormalErrorF(rw, 0, "Invalid amount")
-			fmt.Fprintln(w, "Invalid amount")
+			res := &Result{
+				Code: 40000,
+				Msg:  "Invalid amount",
+			}
+			ba, _ := json.Marshal(res)
+			w.Write(ba)
 			return
 		}
-		res, _ := chainConf.CreateTransactionData(from, to, tokenKey, amount)
-		fmt.Fprintln(w, res)
+
+		res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
+		if err != nil {
+			res := &Result{
+				Code: 40000,
+				Msg:  err.Error(),
+			}
+			ba, _ := json.Marshal(res)
+			w.Write(ba)
+			return
+		}
+
+		fmt.Println("res", res)
+
+		result := &Result{
+			Code: 0,
+			Data: map[string]interface{}{
+				"txData": res.Result,
+			},
+		}
+		ba, _ := json.Marshal(result)
+		// // 允许来自所有域名请求
+		w.Header().Add("Access-Control-Allow-Origin", "*")
+		// 设置所允许的HTTP请求方法
+		w.Header().Add("Access-Control-Allow-Methods", "OPTIONS, GET, PUT, POST, DELETE")
+		// 字段是必需的。它也是一个逗号分隔的字符串，表明服务器支持的所有头信息字段.
+		w.Header().Add("Access-Control-Allow-Headers", "x-requested-with, accept, origin, content-type")
+		w.Header().Add("Content-Type", "application/json")
+		// fmt.Fprintln(w, string(ba))
+		w.Write(ba)
+		return
+		// fmt.Fprintln(w, res)
 	} else {
 		fmt.Fprintln(w, "only Post ")
 	}
