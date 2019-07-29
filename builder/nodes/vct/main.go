@@ -39,6 +39,7 @@ var (
 type Result struct {
 	Code int                    `json:"code"`
 	Data map[string]interface{} `json:"data"`
+	Msg  string                 `json:"msg"`
 }
 
 func main() {
@@ -87,6 +88,11 @@ func router(url string) {
 	if err != nil {
 		fmt.Println("http listen failed.", err)
 	}
+}
+func JSON(w http.ResponseWriter, data interface{}) error {
+	w.Header().Set("Content-Type", "application/json")
+	encoder := json.NewEncoder(w)
+	return encoder.Encode(data)
 }
 
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
@@ -147,24 +153,49 @@ func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 }
 
 func getBalance(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("-------------- getBalance")
-	address := r.PostFormValue("address")
+
+	address := r.FormValue("address")
+	fmt.Println("-------------- getBalance", address)
+	if address == "" {
+		res := &Result{
+			Code: 40000,
+			Msg:  "address empty",
+		}
+		ba, _ := json.Marshal(res)
+		w.Write(ba)
+		return
+	}
 	b, err := chainConf.GetBalance(address)
 	if err != nil {
-		fmt.Println("--------------err", err)
+		res := &Result{
+			Code: 40000,
+			Msg:  err.Error(),
+		}
+		ba, _ := json.Marshal(res)
+		w.Write(ba)
+		return
 	}
 
 	res := &Result{
 		Code: 0,
 		Data: map[string]interface{}{
-			"balance": b,
+			"total": b,
 		},
 	}
 
 	ba, _ := json.Marshal(res)
-	w.Write(ba)
+	// w.Write(ba)
 
+	// // 允许来自所有域名请求
+	w.Header().Add("Access-Control-Allow-Origin", "*")
+	// 设置所允许的HTTP请求方法
+	w.Header().Add("Access-Control-Allow-Methods", "OPTIONS, GET, PUT, POST, DELETE")
+	// 字段是必需的。它也是一个逗号分隔的字符串，表明服务器支持的所有头信息字段.
+	w.Header().Add("Access-Control-Allow-Headers", "x-requested-with, accept, origin, content-type")
+	w.Header().Add("Content-Type", "application/json")
 	// fmt.Fprintln(w, string(ba))
+	fmt.Println("ba", ba)
+	w.Write(ba)
 }
 
 //InitViper we can set viper which fabric peer is used
