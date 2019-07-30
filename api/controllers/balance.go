@@ -1,8 +1,7 @@
 package controllers
 
 import (
-	"century/api/models"
-	"encoding/json"
+	"century/oasis/api/models"
 	"fmt"
 
 	"github.com/astaxie/beego"
@@ -14,31 +13,51 @@ type BalanceController struct {
 	beego.Controller
 }
 
-func (u *BalanceController) Get() {
-	var balance models.Balance
-	json.Unmarshal(u.Ctx.Input.RequestBody, &balance)
+func (balance *BalanceController) Get() {
+	// var balance models.Balance
+	// json.Unmarshal(u.Ctx.Input.RequestBody, &balance)
+	defer balance.ServeJSON()
+	addr := balance.GetString("address")
+	if addr == "" {
+		balance.Data["json"] = map[string]interface{}{
+			"code": 0,
+			"msg":  "error:address empty",
+		}
+		return
+	}
+
 	host := beego.AppConfig.String("builderHost")
 	port := beego.AppConfig.String("builderPort")
-	url := fmt.Sprintf("http://%s:%s/api/getBalance", host, port)
+	url := fmt.Sprintf("http://%s:%s/api/v1/getBalance?address=%s", host, port, addr)
+
 	req := httplib.Get(url)
+	b, _ := req.Bytes()
+	fmt.Println("url", url, "ba", b)
 	var resp models.CommResp
-	fmt.Println(req.Bytes())
+
 	err := req.ToJSON(&resp)
 	if err != nil {
-		u.Data["json"] = map[string]interface{}{
+		balance.Data["json"] = map[string]interface{}{
 			"code": 40000,
 			"msg":  err.Error(),
 		}
 
-		u.ServeJSON()
 		return
 	}
-	fmt.Println(resp)
-	u.Data["json"] = map[string]interface{}{
+	if resp.Code != 0 {
+		balance.Data["json"] = map[string]interface{}{
+			"code": 40000,
+			"msg":  resp.Msg,
+		}
+
+		return
+	}
+
+	balance.Data["json"] = map[string]interface{}{
 		"code": 0,
 		"data": resp.Data,
 	}
-	u.ServeJSON()
+
 	// resp, err := http.Get(url)
 	// if err != nil {
 

@@ -8,7 +8,8 @@
 package routers
 
 import (
-	"century/api/controllers"
+	"century/oasis/api/controllers"
+	"century/oasis/api/db"
 
 	"github.com/astaxie/beego"
 )
@@ -27,7 +28,11 @@ func init() {
 		),
 	)
 	beego.AddNamespace(ns)
+	db := db.Init()
+	ft := &controllers.TransferController{DB: db}
 	// beego.Router("/", &controllers.MainController{})
 	// beego.Router("api/v1/", &controllers.TransferController{}, "post:CreateTransferTxData")
 	beego.Router("api/v1/balance", &controllers.BalanceController{})
+	beego.Router("api/v1/createTransferTxData", ft, "post:CreateTransferTxData")
+	beego.Router("api/v1/submitTx", ft, "post:SubmitTx")
 }

@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"century/api/models"
+	"century/oasis/api/models"
 	"encoding/json"
 
 	"github.com/astaxie/beego"
@@ -116,4 +116,3 @@ func (u *UserController) Logout() {
 	u.Data["json"] = "logout success"
 	u.ServeJSON()
 }
-
