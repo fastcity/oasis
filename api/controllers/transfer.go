@@ -4,10 +4,12 @@ import (
 	"century/oasis/api/db"
 	"century/oasis/api/models"
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/astaxie/beego"
 	"github.com/astaxie/beego/httplib"
+	"github.com/buger/jsonparser"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -26,7 +28,7 @@ func (tf *TransferController) CreateTransferTxData() {
 	transfer.From = tf.GetString("from")
 	transfer.To = tf.GetString("to")
 	transfer.Value = tf.GetString("value")
-	transfer.TokenKey = tf.GetString("tokenKey")
+	transfer.TokenKey = tf.GetString("tokenKey", "-")
 	transfer.Chain = tf.GetString("chain")
 	transfer.Coin = tf.GetString("coin")
 	transfer.CreateID = tf.GetString("createId")
@@ -74,13 +76,29 @@ func (tf *TransferController) CreateTransferTxData() {
 	req.JSONBody(transfer)
 
 	var resp models.CommResp
-	err = req.ToJSON(&resp)
-	resp.Data["requestId"] = transfer.RequestID
+	reqb, err := req.Bytes()
+	v, err := jsonparser.Set(reqb, []byte(`"`+transfer.RequestID+`"`), "data", "requestId")
+	if err != nil {
+		tf.Data["json"] = map[string]interface{}{
+			"code": 40002,
+			"msg":  err.Error(),
+		}
 
-	fmt.Println(resp.Data)
+		return
+	}
+	// fmt.Println("v", string(v), len(reqb))
+	// fmt.Println("v", string(reqb), len(reqb))
+	// // json
+	// re, _ := req.Response()
+	// fmt.Println("v", string(reqb), re.ContentLength)
+	// err = req.ToJSON(&resp) // 被截断，content-lenght??
+	err = json.Unmarshal(v, &resp)
+
+	// fmt.Println(resp.Data)
 	if err != nil {
 		tf.Data["json"] = map[string]interface{}{
 			"code": 40001,
+			"data": resp.Data,
 			"msg":  err.Error(),
 		}
 
@@ -89,6 +107,7 @@ func (tf *TransferController) CreateTransferTxData() {
 	if resp.Code != 0 {
 		tf.Data["json"] = map[string]interface{}{
 			"code": 40000,
+			"data": resp.Data,
 			"msg":  resp.Msg,
 		}
 
@@ -97,6 +116,7 @@ func (tf *TransferController) CreateTransferTxData() {
 
 	tf.Data["json"] = map[string]interface{}{
 		"code": 0,
+		// "data": resp.Data,
 		"data": resp.Data,
 	}
 }

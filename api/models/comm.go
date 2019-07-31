@@ -1,9 +1,10 @@
 package models
 
 type CommResp struct {
-	Code int                         `json:"code"`
-	Data map[interface{}]interface{} `json:"data"`
-	Msg  string                      `json:"msg"`
+	Code int `json:"code"`
+	// Data map[interface{}]interface{} `json:"data"` // 不能解析??
+	Data interface{} `json:"data"`
+	Msg  string      `json:"msg"`
 }
 
 type RespIntserface interface {

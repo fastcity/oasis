@@ -11,8 +11,8 @@ type Transfer struct {
 	To        string
 	Value     string
 	TokenKey  string
-	CreateID  string
-	RequestID string `json:"requestId"`
+	CreateID  string `bson:"createId"`
+	RequestID string `json:"requestId" bson:"requestId"`
 }
 
 type Balance struct {
