@@ -8,6 +8,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/big"
 	"net/http"
@@ -37,9 +38,9 @@ var (
 
 // Result 返回结果
 type Result struct {
-	Code int                    `json:"code"`
-	Data map[string]interface{} `json:"data"`
-	Msg  string                 `json:"msg"`
+	Code int         `json:"code"`
+	Data interface{} `json:"data"`
+	Msg  string      `json:"msg"`
 }
 
 func main() {
@@ -95,14 +96,73 @@ func JSON(w http.ResponseWriter, data interface{}) error {
 	return encoder.Encode(data)
 }
 
+func has(s []string, value string) bool {
+	for _, v := range s {
+		if v == value {
+			return true
+		}
+	}
+	return false
+}
+
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("createTransactionDataHandler------")
+	type Transfer struct {
+		Chain     string
+		Coin      string
+		From      string `json:"from"`
+		To        string
+		Value     string
+		Amount    *big.Int
+		TokenKey  string
+		RequestID string `json:"requestId"`
+	}
 	if r.Method == http.MethodPost {
-		from := r.PostFormValue("from")
-		to := r.PostFormValue("to")
-		tokenKey := r.PostFormValue("tokenKey")
-		fmt.Println("from", from, "to", to)
-		amount, ok := big.NewInt(0).SetString(r.PostFormValue("value"), 0)
+		fmt.Println("r.Header", r.Header)
+		tf := &Transfer{}
+		// // 允许来自所有域名请求
+		// r.Header.Add("Access-Control-Allow-Origin", "*")
+		// // 设置所允许的HTTP请求方法
+		// r.Header.Add("Access-Control-Allow-Methods", "OPTIONS, GET, PUT, POST, DELETE")
+		// // 字段是必需的。它也是一个逗号分隔的字符串，表明服务器支持的所有头信息字段.
+		// r.Header.Add("Access-Control-Allow-Headers", "x-requested-with, accept, origin, content-type")
+		// r.Header.Add("Content-Type", "application/json")
+		// r.Header.Add("Content-Type", "application/json")
+		fmt.Println(`r.Header.Get("Content-Type")`, r.Header.Get("Content-Type"))
+		switch r.Header.Get("Content-Type") {
+		case "application/json":
+			body, _ := ioutil.ReadAll(r.Body)
+			err := json.Unmarshal(body, tf)
+			if err != nil {
+				res := &Result{
+					Code: 40000,
+					Msg:  err.Error(),
+				}
+				ba, _ := json.Marshal(res)
+				w.Write(ba)
+				return
+			}
+			// str, _ := jsonparser.GetString(body, "from")
+			// fmt.Println("from", str)
+		case "application/x-www-form-urlencoded":
+			tf.From = r.PostFormValue("from")
+			tf.To = r.PostFormValue("to")
+			tf.TokenKey = r.PostFormValue("tokenKey")
+			tf.RequestID = r.PostFormValue("requestId")
+			tf.Value = r.PostFormValue("value")
+
+		default:
+			w.WriteHeader(406)
+			res := &Result{
+				Code: 40000,
+				Msg:  "not support Content-Type",
+			}
+			ba, _ := json.Marshal(res)
+			w.Write(ba)
+			return
+
+		}
+		amount, ok := big.NewInt(0).SetString(tf.Value, 0)
 
 		if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
 			// s.NormalErrorF(rw, 0, "Invalid amount")
@@ -114,8 +174,41 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 			w.Write(ba)
 			return
 		}
+		tf.Amount = amount
 
-		res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
+		if tf.TokenKey == "" || tf.TokenKey == "-" {
+			tf.Coin = "VCT"
+			tf.TokenKey = "-"
+		} else {
+			tf.Coin = "VCT_TOKEN"
+		}
+		// from := r.PostFormValue("from")
+		// to := r.PostFormValue("to")
+		// tokenKey := r.PostFormValue("tokenKey")
+		// // fmt.Println("from", from, "to", to, r.Body)
+		// amount, ok := big.NewInt(0).SetString(r.PostFormValue("value"), 0)
+
+		// if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
+		// 	// s.NormalErrorF(rw, 0, "Invalid amount")
+		// 	res := &Result{
+		// 		Code: 40000,
+		// 		Msg:  "Invalid amount",
+		// 	}
+		// 	ba, _ := json.Marshal(res)
+		// 	w.Write(ba)
+		// 	return
+		// }
+
+		insertresult, err := db.GetCollection(commdb, "transfertochains").InsertOne(context.Background(),
+			bson.M{"chain": "VCT", "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey, "value": tf.Value, "requestId": tf.RequestID})
+
+		if err != nil {
+			fmt.Println("InsertOne transfertochains error", err)
+		}
+		fmt.Println("insertresult", insertresult)
+
+		// res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
+		data, err := chainConf.CreateTransactionData(tf.From, tf.To, tf.TokenKey, tf.Amount)
 		if err != nil {
 			res := &Result{
 				Code: 40000,
@@ -125,48 +218,87 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 			w.Write(ba)
 			return
 		}
-
-		fmt.Println("res", res)
-
+		res, err := chainConf.ToResponse()
+		if err != nil {
+			res := &Result{
+				Code: 40000,
+				Msg:  err.Error(),
+			}
+			ba, _ := json.Marshal(res)
+			w.Write(ba)
+			return
+		}
 		result := &Result{
 			Code: 0,
-			Data: map[string]interface{}{
+			Data: map[interface{}]interface{}{
 				"txData": res.Result,
 			},
 		}
+		fmt.Println("res", result)
 		ba, _ := json.Marshal(result)
-		// // 允许来自所有域名请求
-		w.Header().Add("Access-Control-Allow-Origin", "*")
-		// 设置所允许的HTTP请求方法
-		w.Header().Add("Access-Control-Allow-Methods", "OPTIONS, GET, PUT, POST, DELETE")
-		// 字段是必需的。它也是一个逗号分隔的字符串，表明服务器支持的所有头信息字段.
-		w.Header().Add("Access-Control-Allow-Headers", "x-requested-with, accept, origin, content-type")
+
 		w.Header().Add("Content-Type", "application/json")
 		// fmt.Fprintln(w, string(ba))
 		w.Write(ba)
 		return
-		// fmt.Fprintln(w, res)
-	} else {
-		fmt.Fprintln(w, "only Post ")
 	}
-
+	w.WriteHeader(405)
+	res := &Result{
+		Code: 40000,
+		Msg:  "method not allow",
+	}
+	ba, _ := json.Marshal(res)
+	w.Write(ba)
+	return
 }
 
 func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 
-	from := r.PostFormValue("from")
-	to := r.PostFormValue("to")
+	requestID := r.PostFormValue("requestId")
+	singedTxRaw := r.PostFormValue("singedTxRaw")
 
-	tokenKey := r.PostFormValue("tokenKey")
+	result := db.GetCollection(commdb, "transfertochains").FindOne(context.Background(), bson.M{"requestId": requestID})
 
-	amount, ok := big.NewInt(0).SetString(r.PostFormValue("value"), 0)
+	type singedTx struct {
+		TxData map[string]string `json:"txData"`
+	}
+	var tx = &singedTx{}
+	result.Decode(tx)
 
-	if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
-		fmt.Fprintln(w, "Invalid amount")
+	if tx.TxData["raw"] == "" {
+		res := &Result{
+			Code: 40000,
+			Msg:  "not find raw tx",
+		}
+		ba, _ := json.Marshal(res)
+		w.Write(ba)
 		return
 	}
-	res, _ := chainConf.CreateTransactionData(from, to, tokenKey, amount)
-	fmt.Fprintln(w, res)
+
+	res, err := chainConf.SubmitTransactionData(tx.TxData["raw"], singedTxRaw)
+	if err != nil {
+		res := &Result{
+			Code: 40000,
+			Msg:  err.Error(),
+		}
+		ba, _ := json.Marshal(res)
+		w.Write(ba)
+		return
+	}
+
+	fmt.Println("res", res)
+
+	data := &Result{
+		Code: 0,
+		Data: map[interface{}]interface{}{
+			"txid": res.Result,
+		},
+	}
+	ba, _ := json.Marshal(data)
+	w.Header().Add("Content-Type", "application/json")
+	// fmt.Fprintln(w, string(ba))
+	w.Write(ba)
+	return
 }
 
 func getBlockHeight(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +310,7 @@ func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 
 	res := &Result{
 		Code: 0,
-		Data: map[string]interface{}{
+		Data: map[interface{}]interface{}{
 			"Height": h,
 		},
 	}
@@ -214,7 +346,7 @@ func getBalance(w http.ResponseWriter, r *http.Request) {
 
 	res := &Result{
 		Code: 0,
-		Data: map[string]interface{}{
+		Data: map[interface{}]interface{}{
 			"total": b,
 		},
 	}

@@ -15,13 +15,16 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type api struct {
 	BaseURL string
+	bytes   []byte
 }
 type ChainApi interface {
 	GetBlockHeight() (height int64, err error)
 	GetBlockInfo(height int64) ([]byte, error)
 	GetBalance(address string) (balance string, err error)
-	CreateTransactionData(from, to, tokenKey string, amount *big.Int) (*Response, error)
-	SubmitTransactionData(rawtx, signStr string) (*Response, error)
+	CreateTransactionData(from, to, tokenKey string, amount *big.Int) ([]byte, error)
+	SubmitTransactionData(rawtx, signStr string) ([]byte, error)
+	ToStruct(interface{}) error
+	ToResponse() (*Response, error)
 }
 
 type Response struct {
@@ -118,7 +121,7 @@ func (u *api) GetBlockInfo(height int64) ([]byte, error) {
 }
 
 // createTransactionData 创建未签名事务
-func (u *api) CreateTransactionData(from, to, tokenKey string, amount *big.Int) (*Response, error) {
+func (u *api) CreateTransactionData(from, to, tokenKey string, amount *big.Int) ([]byte, error) {
 	url := u.BaseURL
 	if !isEmpty(tokenKey) {
 		url = url + "/data/token." + tokenKey + "/fund"
@@ -128,22 +131,24 @@ func (u *api) CreateTransactionData(from, to, tokenKey string, amount *big.Int) 
 
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
 	body := fmt.Sprintf("from=%s&to=%s&amount=%s", from, to, amount)
-	resp, err := u.apiPost(url, body)
-	if err != nil || resp.Error.Message != "" {
-		return resp, err
-	}
-	return resp, err
+	// resp, err := u.apiPost(url, body)
+	// if err != nil || resp.Error.Message != "" {
+	// 	return resp, err
+	// }
+	// return resp, err
+	return u.apiPost(url, body)
 }
 
-func (u *api) SubmitTransactionData(rawtx, signStr string) (*Response, error) {
+func (u *api) SubmitTransactionData(rawtx, signStr string) ([]byte, error) {
 	url := u.BaseURL + `/rawtransaction`
 	// body := fmt.Sprintf("accountID=%s&to=%s&amount=3&nonce=%d", from, to, getNonce())
 	body := fmt.Sprintf("tx=%s&sig=%s", rawtx, signStr)
-	resp, err := u.apiPost(url, body)
-	if err != nil || resp.Error.Message != "" {
-		return resp, err
-	}
-	return resp, err
+	// resp, err := u.apiPost(url, body)
+	// if err != nil || resp.Error.Message != "" {
+	// 	return resp, err
+	// }
+	// return resp, err
+	return u.apiPost(url, body)
 }
 
 func isEmpty(str string) bool {
@@ -171,22 +176,36 @@ func (u *api) apiGet(url string) ([]byte, error) {
 	// return res, nil
 }
 
-func (u *api) apiPost(url, requestBody string) (*Response, error) {
-	res := &Response{}
+func (u *api) apiPost(url, requestBody string) ([]byte, error) {
+	// res := &Response{}
 
 	resp, err := http.Post(url, "application/x-www-form-urlencoded", strings.NewReader(requestBody))
 
 	if err != nil {
-		return res, err
+		return nil, err
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
-	err = json.Unmarshal(body, res)
+	// err = json.Unmarshal(body, res)
+	// if err != nil {
+	// 	return res, err
+	// }
+	u.bytes = body
+
+	return body, err
+}
+
+func (u *api) ToStruct(v interface{}) error {
+	return json.Unmarshal(u.bytes, v)
+}
+
+func (u *api) ToResponse() (*Response, error) {
+	res := &Response{}
+	err := json.Unmarshal(u.bytes, res)
 	if err != nil {
 		return res, err
 	}
-
 	return res, nil
 }
