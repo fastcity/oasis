@@ -208,7 +208,7 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("insertresult", insertresult)
 
 		// res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
-		data, err := chainConf.CreateTransactionData(tf.From, tf.To, tf.TokenKey, tf.Amount)
+		_, err = chainConf.CreateTransactionData(tf.From, tf.To, tf.TokenKey, tf.Amount)
 		if err != nil {
 			res := &Result{
 				Code: 40000,
@@ -275,7 +275,7 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := chainConf.SubmitTransactionData(tx.TxData["raw"], singedTxRaw)
+	_, err := chainConf.SubmitTransactionData(tx.TxData["raw"], singedTxRaw)
 	if err != nil {
 		res := &Result{
 			Code: 40000,
@@ -285,7 +285,16 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write(ba)
 		return
 	}
-
+	res, err := chainConf.ToResponse()
+	if err != nil {
+		res := &Result{
+			Code: 40000,
+			Msg:  err.Error(),
+		}
+		ba, _ := json.Marshal(res)
+		w.Write(ba)
+		return
+	}
 	fmt.Println("res", res)
 
 	data := &Result{
