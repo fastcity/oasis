@@ -21,6 +21,7 @@ import (
 	"github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -240,10 +241,11 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 
 	requestID := r.PostFormValue("requestId")
 	singedRawTx := r.PostFormValue("singedRawTx")
+	txRaw := r.PostFormValue("txRaw")
 
-	// id, _ := primitive.ObjectIDFromHex(transfer.RequestID)
-	// where := bson.M{"_id": id} //insertresult.InsertedID
-	result := db.GetCollection(commdb, "transfers").FindOne(context.Background(), bson.M{"requestId": requestID})
+	id, _ := primitive.ObjectIDFromHex(requestID)
+	where := bson.M{"_id": id} //insertresult.InsertedID
+	result := db.GetCollection(commdb, "transfers").FindOne(context.Background(), where)
 
 	type singedTx struct {
 		TxData map[string]string `json:"txData"`
@@ -251,17 +253,24 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 	var tx = &singedTx{}
 	result.Decode(tx)
 
-	if tx.TxData["raw"] == "" {
-		res := &Result{
-			Code: 40000,
-			Msg:  "not find raw tx",
-		}
-		ba, _ := json.Marshal(res)
-		w.Write(ba)
-		return
-	}
+	// rawByte, _ := result.DecodeBytes()
+	// raw := rawByte.Lookup("txData", "raw").String()
+	// // rawstr := rawV.String()
 
-	_, err := chainConf.SubmitTransactionData(tx.TxData["raw"], singedRawTx)
+	// // rawV.Int32OK()
+	// // fmt.Println(rawV, rawstr)
+
+	// if raw == "" {
+	// 	res := &Result{
+	// 		Code: 40000,
+	// 		Msg:  "not find raw tx",
+	// 	}
+	// 	ba, _ := json.Marshal(res)
+	// 	w.Write(ba)
+	// 	return
+	// }
+
+	b, err := chainConf.SubmitTransactionData(txRaw, singedRawTx)
 	if err != nil {
 		res := &Result{
 			Code: 40000,
@@ -272,7 +281,9 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b := chainConf.GetResponseBytes()
+	resp, _ := chainConf.ToResponse()
+	fmt.Println("resp", resp)
+
 	txid, err := jsonparser.GetString(b, "result")
 	if err != nil {
 		res := &Result{
