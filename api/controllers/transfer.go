@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/astaxie/beego"
 	"github.com/astaxie/beego/httplib"
@@ -24,7 +25,7 @@ type TransferController struct {
 func (tf *TransferController) CreateTransferTxData() {
 	defer tf.ServeJSON()
 	transfer := models.Transfer{}
-	// json.Unmarshal(tf.Ctx.Input.RequestBody, &transfer) // 不好使 TODO: 带研究
+	// json.Unmarshal(tf.Ctx.Input.RequestBody, &transfer) // TODO: 不好使,请求头需为json
 	transfer.From = tf.GetString("from")
 	transfer.To = tf.GetString("to")
 	transfer.Value = tf.GetString("value")
@@ -113,10 +114,23 @@ func (tf *TransferController) CreateTransferTxData() {
 
 		return
 	}
+	txData := resp.Data["txData"]
+	// id, _ := primitive.ObjectIDFromHex(transfer.RequestID)
+	// where := bson.M{"_id": id} //insertresult.InsertedID
+	where := bson.M{"_id": insertresult.InsertedID} //
+	updateStr := bson.M{"$set": bson.M{"txData": txData, "code": 2, "status": "txDataCreated", "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": "update txData at: ${Date.now()}"}}
+	upresult := tf.DB.ConnCollection("transfers").FindOneAndUpdate(context.Background(), where, updateStr)
+	if upresult.Err() != nil {
+		tf.Data["json"] = map[string]interface{}{
+			"code": 40001,
+			"msg":  upresult.Err().Error(),
+		}
+
+		return
+	}
 
 	tf.Data["json"] = map[string]interface{}{
 		"code": 0,
-		// "data": resp.Data,
 		"data": resp.Data,
 	}
 }
@@ -126,10 +140,9 @@ func (tf *TransferController) SubmitTx() {
 	defer tf.ServeJSON()
 	// var transfer models.Transfer
 	// json.Unmarshal(u.Ctx.Input.RequestBody, &transfer)
-	transfer := models.Transfer{}
 	// json.Unmarshal(tf.Ctx.Input.RequestBody, &transfer) // 不好使 TODO: 带研究
-	transfer.From = tf.GetString("signedTx")
-	transfer.To = tf.GetString("requestId")
+	singedRawTx := tf.GetString("singedRawTx")
+	requestID := tf.GetString("requestId")
 
 	// reqBody := fmt.Sprintf("from=%s&to=%s&value=%s", transfer.From, transfer.To, transfer.Value)
 
@@ -144,11 +157,11 @@ func (tf *TransferController) SubmitTx() {
 	// fmt.Println(string(result))
 	host := beego.AppConfig.String("builderHost")
 	port := beego.AppConfig.String("builderPort")
-	url := fmt.Sprintf("http://%s:%s/api/v1/createTransferTxData", host, port)
-
+	url := fmt.Sprintf("http://%s:%s/api/v1/submitTxData", host, port)
+	reqBody := fmt.Sprintf("requestId=%s&singedRawTx=%s", requestID, singedRawTx)
 	req := httplib.Post(url)
-	// req.Header("Content-Type", "application/x-www-form-urlencoded")
-	// req.JSONBody(transfer)
+	req.Body(reqBody)
+	req.Header("Content-Type", "application/x-www-form-urlencoded")
 
 	var resp models.CommResp
 	err := req.ToJSON(&resp)
@@ -168,9 +181,23 @@ func (tf *TransferController) SubmitTx() {
 
 		return
 	}
+	// TODO: kakfa
+	//  const updateStr2 = { $set: { kafkaMsg, kafkaMsgResult, code: 8, status: 'sendKafkaMsg', updatedAt: Date.now() }, $push: { logs: `sendKafkaMsg at: ${Date.now()}` } }
+	updateStr := bson.M{"$set": bson.M{"code": 8, "status": "send", "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": "sendKafkaMsg at: ${Date.now()}"}}
+	upresult := tf.DB.ConnCollection("transfers").FindOneAndUpdate(context.Background(), bson.M{"_id": requestID}, updateStr)
+	if upresult.Err() != nil {
+		tf.Data["json"] = map[string]interface{}{
+			"code": 40001,
+			"msg":  upresult.Err().Error(),
+		}
 
+		return
+	}
 	tf.Data["json"] = map[string]interface{}{
 		"code": 0,
-		"data": resp.Data,
+		"data": struct {
+			RequestID string `json:"requestId"`
+		}{requestID},
+		"msg": "create task success, the status of task will be notify",
 	}
 }

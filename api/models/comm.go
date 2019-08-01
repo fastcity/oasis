@@ -1,10 +1,10 @@
 package models
 
 type CommResp struct {
-	Code int `json:"code"`
-	// Data map[interface{}]interface{} `json:"data"` // 不能解析??
-	Data interface{} `json:"data"`
-	Msg  string      `json:"msg"`
+	Code int                    `json:"code"`
+	Data map[string]interface{} `json:"data"` // 不能解析??
+	// Data interface{}                 `json:"data"`
+	Msg string `json:"msg"`
 }
 
 type RespIntserface interface {
@@ -12,7 +12,7 @@ type RespIntserface interface {
 	NewError(int, string) *CommResp
 }
 
-func (r *CommResp) NewSuccess(v map[interface{}]interface{}) *CommResp {
+func (r *CommResp) NewSuccess(v map[string]interface{}) *CommResp {
 	return &CommResp{
 		Code: 0,
 		Data: v,

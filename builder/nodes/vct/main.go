@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/buger/jsonparser"
 	"github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
@@ -80,8 +81,17 @@ func router(url string) {
 	api := fmt.Sprintf("%s://%s:%s", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
 	chainConf = gchain.NewChainAPi(api)
 
+	// // 允许来自所有域名请求
+	// r.Header.Add("Access-Control-Allow-Origin", "*")
+	// // 设置所允许的HTTP请求方法
+	// r.Header.Add("Access-Control-Allow-Methods", "OPTIONS, GET, PUT, POST, DELETE")
+	// // 字段是必需的。它也是一个逗号分隔的字符串，表明服务器支持的所有头信息字段.
+	// r.Header.Add("Access-Control-Allow-Headers", "x-requested-with, accept, origin, content-type")
+	// r.Header.Add("Content-Type", "application/json")
+	// r.Header.Add("Content-Type", "application/json")
+
 	http.HandleFunc("/api/v1/createTransferTxData", createTransactionDataHandler)
-	http.HandleFunc("/api/v1/submitTxDta", submitTxDtaHandler)
+	http.HandleFunc("/api/v1/submitTxData", submitTxDtaHandler)
 	http.HandleFunc("/api/v1/getBlockHeight", getBlockHeight)
 	http.HandleFunc("/api/v1/getBalance", getBalance)
 
@@ -107,7 +117,7 @@ func has(s []string, value string) bool {
 
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("createTransactionDataHandler------")
-	type Transfer struct {
+	type transfer struct {
 		Chain     string
 		Coin      string
 		From      string `json:"from"`
@@ -117,29 +127,31 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		TokenKey  string
 		RequestID string `json:"requestId"`
 	}
+	res := &Result{}
+	defer func(res *Result) {
+		w.Header().Add("Content-Type", "application/json")
+		ba, err := json.Marshal(res)
+		if err != nil {
+			res.Code = 40000
+			res.Msg = err.Error()
+		}
+		w.Write(ba)
+	}(res)
+
 	if r.Method == http.MethodPost {
 		fmt.Println("r.Header", r.Header)
-		tf := &Transfer{}
-		// // 允许来自所有域名请求
-		// r.Header.Add("Access-Control-Allow-Origin", "*")
-		// // 设置所允许的HTTP请求方法
-		// r.Header.Add("Access-Control-Allow-Methods", "OPTIONS, GET, PUT, POST, DELETE")
-		// // 字段是必需的。它也是一个逗号分隔的字符串，表明服务器支持的所有头信息字段.
-		// r.Header.Add("Access-Control-Allow-Headers", "x-requested-with, accept, origin, content-type")
-		// r.Header.Add("Content-Type", "application/json")
-		// r.Header.Add("Content-Type", "application/json")
+		tf := &transfer{}
+
 		fmt.Println(`r.Header.Get("Content-Type")`, r.Header.Get("Content-Type"))
 		switch r.Header.Get("Content-Type") {
 		case "application/json":
 			body, _ := ioutil.ReadAll(r.Body)
 			err := json.Unmarshal(body, tf)
 			if err != nil {
-				res := &Result{
-					Code: 40000,
-					Msg:  err.Error(),
-				}
-				ba, _ := json.Marshal(res)
-				w.Write(ba)
+				res.Code = 40000
+				res.Msg = err.Error()
+				// ba, _ := json.Marshal(res)
+				// w.Write(ba)
 				return
 			}
 			// str, _ := jsonparser.GetString(body, "from")
@@ -153,12 +165,10 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 
 		default:
 			w.WriteHeader(406)
-			res := &Result{
-				Code: 40000,
-				Msg:  "not support Content-Type",
-			}
-			ba, _ := json.Marshal(res)
-			w.Write(ba)
+			res.Code = 406
+			res.Msg = "not support Content-Type"
+			// ba, _ := json.Marshal(res)
+			// w.Write(ba)
 			return
 
 		}
@@ -166,12 +176,10 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 
 		if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
 			// s.NormalErrorF(rw, 0, "Invalid amount")
-			res := &Result{
-				Code: 40000,
-				Msg:  "Invalid amount",
-			}
-			ba, _ := json.Marshal(res)
-			w.Write(ba)
+			res.Code = 40000
+			res.Msg = "Invalid amount"
+			// ba, _ := json.Marshal(res)
+			// w.Write(ba)
 			return
 		}
 		tf.Amount = amount
@@ -182,22 +190,6 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			tf.Coin = "VCT_TOKEN"
 		}
-		// from := r.PostFormValue("from")
-		// to := r.PostFormValue("to")
-		// tokenKey := r.PostFormValue("tokenKey")
-		// // fmt.Println("from", from, "to", to, r.Body)
-		// amount, ok := big.NewInt(0).SetString(r.PostFormValue("value"), 0)
-
-		// if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
-		// 	// s.NormalErrorF(rw, 0, "Invalid amount")
-		// 	res := &Result{
-		// 		Code: 40000,
-		// 		Msg:  "Invalid amount",
-		// 	}
-		// 	ba, _ := json.Marshal(res)
-		// 	w.Write(ba)
-		// 	return
-		// }
 
 		insertresult, err := db.GetCollection(commdb, "transfertochains").InsertOne(context.Background(),
 			bson.M{"chain": "VCT", "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey, "value": tf.Value, "requestId": tf.RequestID})
@@ -210,54 +202,48 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		// res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
 		_, err = chainConf.CreateTransactionData(tf.From, tf.To, tf.TokenKey, tf.Amount)
 		if err != nil {
-			res := &Result{
-				Code: 40000,
-				Msg:  err.Error(),
-			}
-			ba, _ := json.Marshal(res)
-			w.Write(ba)
+			res.Code = 40000
+			res.Msg = err.Error()
+			// ba, _ := json.Marshal(res)
+			// w.Write(ba)
 			return
 		}
-		res, err := chainConf.ToResponse()
+		resp, err := chainConf.ToResponse()
 		if err != nil {
-			res := &Result{
-				Code: 40000,
-				Msg:  err.Error(),
-			}
-			ba, _ := json.Marshal(res)
-			w.Write(ba)
+			res.Code = 40000
+			res.Msg = err.Error()
+			// ba, _ := json.Marshal(res)
+			// w.Write(ba)
 			return
 		}
-		result := &Result{
-			Code: 0,
-			Data: map[interface{}]interface{}{
-				"txData": res.Result,
-			},
+		res.Code = 0
+		res.Data = map[interface{}]interface{}{
+			"txData": resp.Result,
 		}
-		fmt.Println("res", result)
-		ba, _ := json.Marshal(result)
+		fmt.Println("res", res)
 
-		w.Header().Add("Content-Type", "application/json")
+		// w.Header().Add("Content-Type", "application/json")
+		// ba, _ := json.Marshal(res)
+		// w.Write(ba)
 		// fmt.Fprintln(w, string(ba))
-		w.Write(ba)
 		return
 	}
 	w.WriteHeader(405)
-	res := &Result{
-		Code: 40000,
-		Msg:  "method not allow",
-	}
-	ba, _ := json.Marshal(res)
-	w.Write(ba)
+	res.Code = 405
+	res.Msg = "method not allow"
+	// ba, _ := json.Marshal(res)
+	// w.Write(ba)
 	return
 }
 
 func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 
 	requestID := r.PostFormValue("requestId")
-	singedTxRaw := r.PostFormValue("singedTxRaw")
+	singedRawTx := r.PostFormValue("singedRawTx")
 
-	result := db.GetCollection(commdb, "transfertochains").FindOne(context.Background(), bson.M{"requestId": requestID})
+	// id, _ := primitive.ObjectIDFromHex(transfer.RequestID)
+	// where := bson.M{"_id": id} //insertresult.InsertedID
+	result := db.GetCollection(commdb, "transfers").FindOne(context.Background(), bson.M{"requestId": requestID})
 
 	type singedTx struct {
 		TxData map[string]string `json:"txData"`
@@ -275,7 +261,7 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := chainConf.SubmitTransactionData(tx.TxData["raw"], singedTxRaw)
+	_, err := chainConf.SubmitTransactionData(tx.TxData["raw"], singedRawTx)
 	if err != nil {
 		res := &Result{
 			Code: 40000,
@@ -285,22 +271,25 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write(ba)
 		return
 	}
-	res, err := chainConf.ToResponse()
-	if err != nil {
-		res := &Result{
-			Code: 40000,
-			Msg:  err.Error(),
-		}
-		ba, _ := json.Marshal(res)
-		w.Write(ba)
-		return
-	}
-	fmt.Println("res", res)
 
+	b := chainConf.GetResponseBytes()
+	txid, err := jsonparser.GetString(b, "result")
+	if err != nil {
+		res := &Result{
+			Code: 40000,
+			Msg:  err.Error(),
+		}
+		ba, _ := json.Marshal(res)
+		w.Write(ba)
+		return
+	}
+	fmt.Println("res", txid)
+
+	setSendTransactionTxid(requestID, txid)
 	data := &Result{
 		Code: 0,
 		Data: map[interface{}]interface{}{
-			"txid": res.Result,
+			"txid": txid,
 		},
 	}
 	ba, _ := json.Marshal(data)

@@ -25,11 +25,12 @@ type ChainApi interface {
 	SubmitTransactionData(rawtx, signStr string) ([]byte, error)
 	ToStruct(interface{}) error
 	ToResponse() (*Response, error)
+	GetResponseBytes() []byte
 }
 
 type Response struct {
-	Result map[string]interface{} `json:"result"`
-	Error  ErrInfo                `json:"error"`
+	Result interface{} `json:"result"`
+	Error  ErrInfo     `json:"error"`
 }
 
 type ErrInfo struct {
@@ -152,7 +153,7 @@ func (u *api) SubmitTransactionData(rawtx, signStr string) ([]byte, error) {
 }
 
 func isEmpty(str string) bool {
-	if str == "" {
+	if str == "" || str == "-" {
 		return true
 	}
 	return false
@@ -208,4 +209,8 @@ func (u *api) ToResponse() (*Response, error) {
 		return res, err
 	}
 	return res, nil
+}
+
+func (u *api) GetResponseBytes() []byte {
+	return u.bytes
 }

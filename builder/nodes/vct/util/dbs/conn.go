@@ -36,3 +36,8 @@ func (con *Conn) GetCollection(db, table string) *mongo.Collection {
 	collection := con.Client.Database(db).Collection(table)
 	return collection
 }
+
+func CreateIndexView(coll *mongo.Collection) mongo.IndexView {
+	//  coll.Indexes().CreateOne()
+	return coll.Indexes()
+}
