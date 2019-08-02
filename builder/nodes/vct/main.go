@@ -586,8 +586,8 @@ func newTranferFromChain(tfc models.TransferFromChain, haveComfirming bool) {
 		db.GetCollection(commdb, "transfers").FindOneAndUpdate(ctx, bson.M{"_id": id}, updateStr1)
 
 		// 添加地址到订阅
-		// await this.addSubscribesHandle(from, tr._account)
-		// updateStr = bson.M{"$set": tx}
+
+		addSubscribesHandle(ttc.From, ttc.ID.String())
 	}
 	updateStr = bson.M{"$set": tx}
 
@@ -771,7 +771,14 @@ func sendNotify(key, accountID, address string, data interface{}) {
 	// this.sendToKafka({ accountId, id: s._id }, 'NOTIFY_TASK', key)
 }
 
-func getSubscribeIds() []string {
+func addSubscribesHandle(address, account string) {
+	id, _ := primitive.ObjectIDFromHex(account)
+	where := bson.M{"_id": id}
+	up := bson.M{"$addToSet": bson.M{"addresses": address}}
+	db.GetCollection(commdb, "subscribes").FindOneAndUpdate(context.Background(), where, up)
+}
+
+func getSubscribeIds(address string) []string {
 	commdb := "dynasty"
 	cursor, _ := db.GetCollection(commdb, "subscribes").Find(context.Background(), bson.M{"addresses": address})
 	accountID := []string{}
@@ -780,4 +787,5 @@ func getSubscribeIds() []string {
 		id := cursor.Current.Lookup("_id").String()
 		accountID = append(accountID, id)
 	}
+	return accountID
 }
