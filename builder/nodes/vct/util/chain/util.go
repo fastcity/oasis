@@ -1,6 +1,7 @@
 package gchain
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -142,13 +143,10 @@ func (u *api) CreateTransactionData(from, to, tokenKey string, amount *big.Int) 
 
 func (u *api) SubmitTransactionData(rawtx, signStr string) ([]byte, error) {
 	url := u.BaseURL + `/rawtransaction`
-	// tx := "I::TOKEN.TRANSFER:ChoKB0FCQ0hBSU4SD0F0b21pY0VuZXJneV92MRIGCMjei+oFGhSPUBotMDP03foHiTmSiSGIK+kbmQ==:CgEKEhYKFPmAE1K+T8V+y4ObshuwV2faNMOdGhYKFBJtq6Q46oTnxDwvVqMgDtZeNxs7"
-	// sig := "EC:01,D0DE0AAEAEFAD02B8BDC8A01A1B8B11C696BD3D66A2C5F10780D95B7DF42645CD85228A6FB29940E858E7E55842AE2BD115D1ED7CC0E82D934E929C97648CB0A,9E30FD64199FFC1F4292C887C1129B352FFD65A3F24860C018FCE7A8F7B3C90F81635B1B2C596BDFC198A5E248992BC3DCBBA4E2F6F409D2030B77BC3D2F15B8:"
+	tx := u.handP(rawtx)
+	body := fmt.Sprintf("tx=%s&sig=%s", tx, signStr)
 
-	body := fmt.Sprintf("tx=%s&sig=%s", rawtx, signStr)
-	// body := fmt.Sprintf("tx=%s&sig=%s", tx, sig)
-	// body := "tx=I::TOKEN.TRANSFER:ChoKB0FCQ0hBSU4SD0F0b21pY0VuZXJneV92MRIGCMjei+oFGhSPUBotMDP03foHiTmSiSGIK+kbmQ==:CgEKEhYKFPmAE1K+T8V+y4ObshuwV2faNMOdGhYKFBJtq6Q46oTnxDwvVqMgDtZeNxs7&sig=EC:01,D0DE0AAEAEFAD02B8BDC8A01A1B8B11C696BD3D66A2C5F10780D95B7DF42645CD85228A6FB29940E858E7E55842AE2BD115D1ED7CC0E82D934E929C97648CB0A,9E30FD64199FFC1F4292C887C1129B352FFD65A3F24860C018FCE7A8F7B3C90F81635B1B2C596BDFC198A5E248992BC3DCBBA4E2F6F409D2030B77BC3D2F15B8:"
-
+	fmt.Println("-----body", body, "tx", tx, "rawtx", rawtx)
 	return u.apiPost(url, body)
 }
 
@@ -179,7 +177,17 @@ func (u *api) apiGet(url string) ([]byte, error) {
 
 func (u *api) apiPost(url, requestBody string) ([]byte, error) {
 	// res := &Response{}
-	resp, err := http.Post(url, "application/x-www-form-urlencoded", strings.NewReader(requestBody))
+	// byte.NewReader()
+
+	// ders: Object.assign({}, {
+	// 	'Accept': 'application/json, text/javascript, */*; q=0.01',
+	// 	'Accept-Language': 'zh-CN,zh;q=0.8,en;q=0.6',
+	// 	'Cache-Contro': 'no-cache',
+	// 	'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+	// 	'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.71 Safari/537.3',
+	// 	'X-Requested-With': 'XMLHttpRequest',
+	// resp, err := http.Post(url, "application/x-www-form-urlencoded", strings.NewReader(requestBody))
+	resp, err := http.Post(url, "application/x-www-form-urlencoded; charset=UTF-8", bytes.NewReader([]byte(requestBody)))
 
 	if err != nil {
 		return nil, err
@@ -195,6 +203,11 @@ func (u *api) apiPost(url, requestBody string) ([]byte, error) {
 	u.bytes = body
 
 	return body, err
+}
+
+// 特殊字符转义
+func (u *api) handP(str string) string {
+	return strings.Replace(str, "+", "%2B", -1)
 }
 
 func (u *api) ToStruct(v interface{}) error {

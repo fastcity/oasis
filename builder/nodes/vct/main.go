@@ -115,6 +115,9 @@ func has(s []string, value string) bool {
 	}
 	return false
 }
+func escapeString(str, e string) {
+	strings.Replace(str, "+", "%2B", -1)
+}
 
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("createTransactionDataHandler------")
@@ -238,46 +241,46 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
-
 	requestID := r.PostFormValue("requestId")
 	singedRawTx := r.PostFormValue("singedRawTx")
-	txRaw := r.PostFormValue("txRaw")
 
-	id, _ := primitive.ObjectIDFromHex(requestID)
-	where := bson.M{"_id": id} //insertresult.InsertedID
+	res := &Result{}
+	defer func(res *Result) {
+		if res.Code != 0 {
+			setSendTransactionError(requestID, res.Msg)
+		}
+
+		ba, _ := json.Marshal(res)
+		w.Header().Add("Content-Type", "application/json")
+		w.Write(ba)
+	}(res)
+
+	id, _ := primitive.ObjectIDFromHex(requestID) // requestID 需要转化为objectId
+	where := bson.M{"_id": id}                    //insertresult.InsertedID
 	result := db.GetCollection(commdb, "transfers").FindOne(context.Background(), where)
 
-	type singedTx struct {
-		TxData map[string]string `json:"txData"`
-	}
-	var tx = &singedTx{}
-	result.Decode(tx)
-
-	// rawByte, _ := result.DecodeBytes()
-	// raw := rawByte.Lookup("txData", "raw").String()
-	// // rawstr := rawV.String()
-
-	// // rawV.Int32OK()
-	// // fmt.Println(rawV, rawstr)
-
-	// if raw == "" {
-	// 	res := &Result{
-	// 		Code: 40000,
-	// 		Msg:  "not find raw tx",
-	// 	}
-	// 	ba, _ := json.Marshal(res)
-	// 	w.Write(ba)
-	// 	return
+	// type singedTx struct {
+	// 	TxData map[string]string `json:"txData"`
 	// }
+	// var tx = &singedTx{}
+	// result.Decode(tx)
 
-	b, err := chainConf.SubmitTransactionData(txRaw, singedRawTx)
+	rawByte, _ := result.DecodeBytes()
+	raw := rawByte.Lookup("txData", "raw").String() // 坑 返回的是json ，单纯字符串会有 /""/ 应去掉
+	raw = strings.Trim(raw, "\"")
+
+	if raw == "" {
+		res.Code = 40000
+		res.Msg = "not find raw tx"
+		// ba, _ := json.Marshal(res)
+		// w.Write(ba)
+		return
+	}
+
+	b, err := chainConf.SubmitTransactionData(raw, singedRawTx)
 	if err != nil {
-		res := &Result{
-			Code: 40000,
-			Msg:  err.Error(),
-		}
-		ba, _ := json.Marshal(res)
-		w.Write(ba)
+		res.Code = 40000
+		res.Msg = err.Error()
 		return
 	}
 
@@ -286,28 +289,28 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 
 	txid, err := jsonparser.GetString(b, "result")
 	if err != nil {
-		res := &Result{
-			Code: 40000,
-			Msg:  err.Error(),
-		}
-		ba, _ := json.Marshal(res)
-		w.Write(ba)
+		res.Code = 40000
+		res.Msg = err.Error()
 		return
 	}
 	fmt.Println("res", txid)
 
 	setSendTransactionTxid(requestID, txid)
-	data := &Result{
-		Code: 0,
-		Data: map[interface{}]interface{}{
-			"txid": txid,
-		},
+	// data := &Result{
+	// 	Code: 0,
+	// 	Data: map[interface{}]interface{}{
+	// 		"txid": txid,
+	// 	},
+	// }
+	res.Code = 0
+	res.Data = map[string]interface{}{
+		"txid": txid,
 	}
-	ba, _ := json.Marshal(data)
-	w.Header().Add("Content-Type", "application/json")
-	// fmt.Fprintln(w, string(ba))
-	w.Write(ba)
+	// ba, _ := json.Marshal(data)
+
+	// w.Write(ba)
 	return
+	// fmt.Fprintln(w, string(ba))
 }
 
 func getBlockHeight(w http.ResponseWriter, r *http.Request) {
@@ -471,8 +474,8 @@ func paserTx(msg []byte) []models.TransferFromChain {
 
 func setSendTransactionTxid(requestID, txid string) {
 	// const transfer = await this.commdb.models.Transfer.findById(mid)
-
-	where := bson.M{"_id": requestID}
+	id, _ := primitive.ObjectIDFromHex(requestID)
+	where := bson.M{"_id": id}
 	ctx := context.Background()
 	result := db.GetCollection(commdb, "transfers").FindOne(ctx, where)
 	if result.Err() != nil {
@@ -514,7 +517,8 @@ func setSendTransactionError(requestID, msg string) {
 	// const transfer = await this.commdb.models.Transfer.findById(mid)
 	commDb := "dynasty"
 	chaindb := "vct"
-	where := bson.M{"_id": requestID}
+	id, _ := primitive.ObjectIDFromHex(requestID)
+	where := bson.M{"_id": id}
 	ctx := context.Background()
 	result := db.GetCollection(chaindb, "transferstochain").FindOneAndDelete(ctx, bson.M{"requestID": requestID})
 	if result.Err() != nil {
@@ -556,12 +560,13 @@ func setSendTransactionError(requestID, msg string) {
 		"error": msg,
 	}
 
-	sendNotify("TRANSFER_ACTION", tcdecode.From, "", notifyData) //TODO : _account
+	sendNotify("TRANSFER_ACTION", "", tcdecode.From, notifyData) //TODO: _account
 }
 
 func newTranferFromChain(tfc models.TransferFromChain, haveComfirming bool) {
 	tx := tfc
 	dbname := tx.Chain
+	commdb = "dynasty"
 	tx.CreatedAt = time.Now().Unix()
 	op := options.FindOneAndUpdate().SetUpsert(true)
 	ctx := context.Background()
@@ -574,6 +579,14 @@ func newTranferFromChain(tfc models.TransferFromChain, haveComfirming bool) {
 		ttcResult.Decode(&ttc)
 		tx.ID = ttc.ID
 		tx.RequestId = ttc.RequestId
+
+		updateStr1 := bson.M{"$set": bson.M{"code": 32, "status": "FROM_CHAIN", "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": `FROM_CHAIN at: ${Date.now()}`}}
+
+		id, _ := primitive.ObjectIDFromHex(ttc.RequestId)
+		db.GetCollection(commdb, "transfers").FindOneAndUpdate(ctx, bson.M{"_id": id}, updateStr1)
+
+		// 添加地址到订阅
+		// await this.addSubscribesHandle(from, tr._account)
 		// updateStr = bson.M{"$set": tx}
 	}
 	updateStr = bson.M{"$set": tx}
@@ -583,6 +596,10 @@ func newTranferFromChain(tfc models.TransferFromChain, haveComfirming bool) {
 	} else {
 		// db.GetCollection(dbname, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
 	}
+
+	// TODO: 查询 订阅表
+	onchain(tx.From, "OUT", tx)
+	onchain(tx.To, "IN", tx)
 
 }
 
@@ -691,6 +708,55 @@ func newBlockNotify(blockNumber string) {
 	// }
 }
 
+func onchain(address, inout string, tx models.TransferFromChain) {
+	accountIds := getSubscribeIds()
+	notifyData := map[string]interface{}{
+		"status":  "TRANSFER_FROM_CHAIN",
+		"inout":   inout,
+		"address": address,
+		"record": map[string]string{
+			"id":        tx.ID.String(),
+			"chain":     tx.Chain,
+			"coin":      tx.Coin,
+			"tokenKey":  tx.TokenKey,
+			"fee":       "0",
+			"from":      tx.From,
+			"to":        tx.To,
+			"value":     tx.Value,
+			"txid":      tx.Txid,
+			"blockNum":  tx.BlockHeight,
+			"blockTime": tx.BlockTime,
+		},
+	}
+	if inout == "OUT" {
+		notifyData["requestId"] = tx.RequestId
+	}
+	for _, acc := range accountIds {
+		sendNotify("TRANSFER_ACTION", acc, address, notifyData) //TODO: _account
+	}
+
+}
+
+func finish(address, inout string, tx models.TransferFromChain) {
+
+	accountIds := getSubscribeIds()
+
+	notifyData := map[string]interface{}{
+		"status":   "TRANSFER_FINISH",
+		"inout":    inout,
+		"address":  address,
+		"id":       tx.ID.String(),
+		"blockNum": tx.BlockHeight,
+		"chain":    tx.Chain,
+	}
+	if inout == "OUT" {
+		notifyData["requestId"] = tx.RequestId
+	}
+	for _, acc := range accountIds {
+		sendNotify("TRANSFER_ACTION", acc, address, notifyData) //TODO: _account
+	}
+}
+
 func sendNotify(key, accountID, address string, data interface{}) {
 
 	// op := options.FindOneAndUpdate().SetUpsert(true)
@@ -703,4 +769,15 @@ func sendNotify(key, accountID, address string, data interface{}) {
 	// const task = new this.commdb.models.NotifyTask({ key, data, _account: accountId, address })
 	// const s = await task.save()
 	// this.sendToKafka({ accountId, id: s._id }, 'NOTIFY_TASK', key)
+}
+
+func getSubscribeIds() []string {
+	commdb := "dynasty"
+	cursor, _ := db.GetCollection(commdb, "subscribes").Find(context.Background(), bson.M{"addresses": address})
+	accountID := []string{}
+	defer cursor.Close(context.Background())
+	if cursor.Next(context.Background()) {
+		id := cursor.Current.Lookup("_id").String()
+		accountID = append(accountID, id)
+	}
 }
