@@ -16,9 +16,9 @@ type TransferFromChain struct {
 	// OnChain     bool   `json:"onChain"`
 	// Log         string `json:"log"`
 	ID          primitive.ObjectID `bson:"_id"`
-	RequestId   string             `bson:"-"`
-	Chain       string             `bson:"-"`
-	Coin        string             `bson:"-"`
+	RequestId   string             `bson:"requestId"`
+	Chain       string             `bson:"chain"`
+	Coin        string             `bson:"coin"`
 	TokenKey    string             `bson:"tokenkey"`
 	From        string             `bson:"from"`
 	To          string             `bson:"to"`
