@@ -5,14 +5,19 @@ node:
     host: "127.0.0.1"
     port: 7080
 
-service:
-    protocal: "http"
+api:
+    # protocal: "http"
     host: 127.0.0.1
     port: 7799
 
 db:
     addr: "127.0.0.1:27017"
+    commondb: "dynasty"
+    chaindb: "vct"
 
 kafka:
     service:
         - "127.0.0.1:9092"
+
+chain:
+    confirmedNumber: 0

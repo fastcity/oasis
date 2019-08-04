@@ -139,7 +139,6 @@ func (tf *TransferController) CreateTransferTxData() {
 func (tf *TransferController) SubmitTx() {
 	defer tf.ServeJSON()
 	// var transfer models.Transfer
-	// json.Unmarshal(u.Ctx.Input.RequestBody, &transfer)
 	// json.Unmarshal(tf.Ctx.Input.RequestBody, &transfer) // 不好使 TODO: 带研究
 	singedRawTx := tf.GetString("singedRawTx")
 	requestID := tf.GetString("requestId")

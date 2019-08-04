@@ -10,29 +10,47 @@ package routers
 import (
 	"century/oasis/api/controllers"
 	"century/oasis/api/db"
+	"century/oasis/api/middleware"
 
 	"github.com/astaxie/beego"
+	"github.com/astaxie/beego/context"
 )
 
 func init() {
-	ns := beego.NewNamespace("/v1",
-		beego.NSNamespace("/object",
-			beego.NSInclude(
-				&controllers.ObjectController{},
-			),
-		),
-		beego.NSNamespace("/user",
-			beego.NSInclude(
-				&controllers.UserController{},
-			),
-		),
-	)
-	beego.AddNamespace(ns)
+
+	// ns := beego.NewNamespace("/v1",
+	// 	beego.NSNamespace("/object",
+	// 		beego.NSInclude(
+	// 			&controllers.ObjectController{},
+	// 		),
+	// 	),
+	// 	beego.NSNamespace("/user",
+	// 		beego.NSInclude(
+	// 			&controllers.UserController{},
+	// 		),
+	// 	),
+	// )
+	// beego.AddNamespace(ns)
+
 	db := db.Init()
+	// context.BeegoInput .SetData()
+	context.BeegoInput
+	beego.InsertFilter("/*", beego.BeforeRouter, middleware.FilterUser)
+
 	ft := &controllers.TransferController{DB: db}
 	// beego.Router("/", &controllers.MainController{})
 	// beego.Router("api/v1/", &controllers.TransferController{}, "post:CreateTransferTxData")
 	beego.Router("api/v1/balance", &controllers.BalanceController{})
 	beego.Router("api/v1/createTransferTxData", ft, "post:CreateTransferTxData")
 	beego.Router("api/v1/submitTx", ft, "post:SubmitTx")
+
+	nsAcc := beego.NewNamespace("api/v1",
+		beego.NSNamespace("/subscribe",
+			beego.NSInclude(
+				&controllers.AccountController{DB: db},
+			),
+		),
+	)
+	beego.AddNamespace(nsAcc)
+
 }

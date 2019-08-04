@@ -15,19 +15,25 @@ type TransferFromChain struct {
 	// TokenKey    string `json:"token"`
 	// OnChain     bool   `json:"onChain"`
 	// Log         string `json:"log"`
-	ID          primitive.ObjectID `bson:"_id"`
-	RequestId   string             `bson:"requestId"`
-	Chain       string             `bson:"chain"`
-	Coin        string             `bson:"coin"`
-	TokenKey    string             `bson:"tokenkey"`
-	From        string             `bson:"from"`
-	To          string             `bson:"to"`
-	Value       string             `bson:"value"`
-	Txid        string             `bson:"txid"`
-	BlockHeight string             `bson:"blockheight"`
-	BlockTime   string             `bson:"blocktime"`
-	CreatedAt   int64              `bson:"createdAt"`
-	UpdatedAt   int64              `bson:"updatedAt"`
+	ID primitive.ObjectID `bson:"_id"`
+	// ID          string             `bson:"-"`
+	RequestId   string `bson:"requestId"`
+	Chain       string `bson:"chain"`
+	Coin        string `bson:"coin"`
+	TokenKey    string `bson:"tokenKey"`
+	From        string `bson:"from"`
+	To          string `bson:"to"`
+	Value       string `bson:"value"`
+	Txid        string `bson:"txid"`
+	BlockHeight string `bson:"blockHeight"`
+	BlockTime   string `bson:"blockTime"`
+
+	CreatedAt int64 `bson:"createdAt"`
+	UpdatedAt int64 `bson:"updatedAt"`
+
+	OnChain bool   `bson:"-"`
+	Log     string `bson:"-"`
+
 	// createdAt: { type: Number, default: Date.now },
 	// updatedAt: { type: Number, default: Date.now },
 }

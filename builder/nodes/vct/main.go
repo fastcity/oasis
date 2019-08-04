@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/big"
 	"net/http"
 	"os"
@@ -22,6 +21,7 @@ import (
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -34,8 +34,9 @@ var (
 	chainConf          gchain.ChainApi
 	kModel             comm.KInterface
 	assign             = "TOKEN.ASSIGN"
-	commdb             = "dynasty"
+	commondb           = "dynasty"
 	chaindb            = "vct"
+	confirmedNumber    = 0
 )
 
 // Result 返回结果
@@ -66,13 +67,17 @@ func main() {
 		fmt.Println("connect mongo error", err)
 	}
 
+	confirmedNumber = viper.GetInt("chain.confirmedNumber")
+	commondb = viper.GetString("chain.commondb")
+	chaindb = viper.GetString("chain.chaindb")
+
 	kModel = comm.NewConsumer(viper.GetStringSlice("kafka.service"))
 	// if kModel.Consumer == nil {
 	// 	fmt.Println("init kafka fail-------")
 	// }
 	defer kModel.Close()
 	go loopReadAndPaser()
-	nodeURL := fmt.Sprintf("%s:%s", viper.GetString("service.host"), viper.GetString("service.port"))
+	nodeURL := fmt.Sprintf("%s:%s", viper.GetString("api.host"), viper.GetString("api.port"))
 	fmt.Println("nodeURL", nodeURL)
 	router(nodeURL)
 
@@ -89,7 +94,6 @@ func router(url string) {
 	// // 字段是必需的。它也是一个逗号分隔的字符串，表明服务器支持的所有头信息字段.
 	// r.Header.Add("Access-Control-Allow-Headers", "x-requested-with, accept, origin, content-type")
 	// r.Header.Add("Content-Type", "application/json")
-	// r.Header.Add("Content-Type", "application/json")
 
 	http.HandleFunc("/api/v1/createTransferTxData", createTransactionDataHandler)
 	http.HandleFunc("/api/v1/submitTxData", submitTxDtaHandler)
@@ -101,6 +105,7 @@ func router(url string) {
 		fmt.Println("http listen failed.", err)
 	}
 }
+
 func JSON(w http.ResponseWriter, data interface{}) error {
 	w.Header().Set("Content-Type", "application/json")
 	encoder := json.NewEncoder(w)
@@ -195,7 +200,7 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 			tf.Coin = "VCT_TOKEN"
 		}
 
-		insertresult, err := db.GetCollection(commdb, "transfertochains").InsertOne(context.Background(),
+		insertresult, err := db.GetCollection(commondb, "transfertochains").InsertOne(context.Background(),
 			bson.M{"chain": "VCT", "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey, "value": tf.Value, "requestId": tf.RequestID})
 
 		if err != nil {
@@ -257,7 +262,7 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 
 	id, _ := primitive.ObjectIDFromHex(requestID) // requestID 需要转化为objectId
 	where := bson.M{"_id": id}                    //insertresult.InsertedID
-	result := db.GetCollection(commdb, "transfers").FindOne(context.Background(), where)
+	result := db.GetCollection(commondb, "transfers").FindOne(context.Background(), where)
 
 	// type singedTx struct {
 	// 	TxData map[string]string `json:"txData"`
@@ -407,7 +412,7 @@ func loopReadAndPaser() {
 		case m := <-msg:
 			tfcs := paserTx(m)
 			for _, tfc := range tfcs {
-				newTranferFromChain(tfc, false)
+				responseNewTx(tfc)
 			}
 		}
 	}
@@ -424,7 +429,7 @@ func paserTx(msg []byte) []models.TransferFromChain {
 		Result *models.Blocks `json:"result"`
 	}
 	// fmt.Println("--------------- blockInfo", string(blockInfos))
-	curor, err := db.GetCollection("vct", "transactions").Find(context.Background(), bson.M{"blockheight": h})
+	curor, err := db.GetCollection("vct", "transactions").Find(context.Background(), bson.M{"blockHeight": h})
 
 	if err != nil {
 		fmt.Println("get transferaction error")
@@ -441,8 +446,6 @@ func paserTx(msg []byte) []models.TransferFromChain {
 			Coin:     "VCT",
 			TokenKey: "-",
 		}
-		log.Println(tx)
-		// op := options.FindOneAndUpdate().SetUpsert(true)
 
 		if tx.OnChain {
 			tfc.BlockHeight = tx.BlockHeight
@@ -457,37 +460,48 @@ func paserTx(msg []byte) []models.TransferFromChain {
 			}
 
 		} else {
-
+			tfc.Log = tx.Log
 		}
 		tfcs = append(tfcs, tfc)
-
-		// if tx.BlockHeight != "" {
-		// 	tx.Chain = "VCT"
-		// 	tx.Coin = "VCT_TOKEN"
-		// 	op := options.FindOneAndUpdate().SetUpsert(true)
-
-		// 	db.GetCollection("vct", "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, bson.M{"$set": tx}, op)
-		// }
 	}
 	return tfcs
 }
 
+func responseNewTx(tfc models.TransferFromChain) {
+
+	// dbname := strings.ToLower(tfc.Chain)
+	if tfc.OnChain {
+		newTranferFromChain(tfc)
+	} else {
+		ctx := context.Background()
+		where := bson.M{"txid": tfc.Txid}
+		ttcResult := db.GetCollection(chaindb, "transferTochains").FindOne(ctx, where)
+		if ttcResult != nil && ttcResult.Err() == nil {
+			// ttc := models.TransferToChain{}
+			// ttcResult.Decode(&ttc)
+			rawByte, _ := ttcResult.DecodeBytes()
+			raw := rawByte.Lookup("requestId").String() // 坑 返回的是json ，单纯字符串会有 /""/ 应去掉
+			requestID := strings.Trim(raw, "\"")
+			setSendTransactionError(requestID, tfc.Log)
+		}
+	}
+}
+
 func setSendTransactionTxid(requestID, txid string) {
-	// const transfer = await this.commdb.models.Transfer.findById(mid)
 	id, _ := primitive.ObjectIDFromHex(requestID)
 	where := bson.M{"_id": id}
 	ctx := context.Background()
-	result := db.GetCollection(commdb, "transfers").FindOne(ctx, where)
+	result := db.GetCollection(commondb, "transfers").FindOne(ctx, where)
 	if result == nil {
 		fmt.Println("transfer not found!")
 		return
 	}
 	rawBytes, _ := result.DecodeBytes()
-	account := rawBytes.Lookup("_account").String()
+	account := rawBytes.Lookup("_account").String() //TODO: 有objectId ?
 
 	// 更新转账操作记录
 	updateStr := bson.M{"$set": bson.M{"txid": txid, "code": 16, "status": `TXID`, "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": `TX_HASH at: ${Date.now()}`}}
-	db.GetCollection(commdb, "transfers").FindOneAndUpdate(ctx, where, updateStr)
+	db.GetCollection(commondb, "transfers").FindOneAndUpdate(ctx, where, updateStr)
 	// // 更新转账账单记录
 	updateStr1 := bson.M{"$set": bson.M{"code": 16, "txid": txid, "updatedAt": time.Now().Unix()}}
 	tc := db.GetCollection(chaindb, "transferstochains").FindOneAndUpdate(ctx, bson.M{"requestId": requestID}, updateStr1)
@@ -511,16 +525,14 @@ func setSendTransactionTxid(requestID, txid string) {
 	notifyData := map[string]string{
 		"status":    "SUBMIT_TRANSACTION_TO_CHAIN",
 		"requestId": requestID,
-		"tfcId":     tcdecode.ID.String(),
+		"tfcId":     tcdecode.ID.Hex(),
 		"txid":      txid,
 	}
 	sendNotify("TRANSFER_ACTION", account, tcdecode.From, notifyData) //TODO : _account
 }
 
 func setSendTransactionError(requestID, msg string) {
-	// const transfer = await this.commdb.models.Transfer.findById(mid)
-	commDb := "dynasty"
-	chaindb := "vct"
+
 	id, _ := primitive.ObjectIDFromHex(requestID)
 	where := bson.M{"_id": id}
 	ctx := context.Background()
@@ -534,7 +546,7 @@ func setSendTransactionError(requestID, msg string) {
 	// TODO: 时间类型
 	// 更新转账操作记录
 	updateStr := bson.M{"$set": bson.M{"code": -1, "status": `ERROR`, "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": `TX_ERROR at: ` + time.Now().String() + msg}}
-	transfer := db.GetCollection(commDb, "transfers").FindOneAndUpdate(ctx, where, updateStr)
+	transfer := db.GetCollection(commondb, "transfers").FindOneAndUpdate(ctx, where, updateStr)
 
 	// 更新转账账单记录
 	tc := db.GetCollection(chaindb, "transferstochains").FindOneAndDelete(ctx, bson.M{"requestId": requestID})
@@ -547,7 +559,7 @@ func setSendTransactionError(requestID, msg string) {
 	tc.Decode(&tcdecode)
 	// // 构造消息
 	rawTf, _ := transfer.DecodeBytes()
-	account := rawTf.Lookup("_account").String()
+	account := rawTf.Lookup("_account").String() //TODO： 验证
 
 	// await this.sendNotify('TRANSFER_ACTION', notifyData, _account)
 	notifyData := map[string]string{
@@ -559,15 +571,14 @@ func setSendTransactionError(requestID, msg string) {
 	sendNotify("TRANSFER_ACTION", account, tcdecode.From, notifyData) //TODO: _account
 }
 
-func newTranferFromChain(tfc models.TransferFromChain, haveComfirming bool) {
+func newTranferFromChain(tfc models.TransferFromChain) {
 	tx := tfc
-	dbname := tx.Chain
-	commdb = "dynasty"
+
 	tx.CreatedAt = time.Now().Unix()
 	op := options.FindOneAndUpdate().SetUpsert(true)
 	ctx := context.Background()
 	where := bson.M{"txid": tx.Txid}
-	ttcResult := db.GetCollection(dbname, "transferTochains").FindOne(ctx, where)
+	ttcResult := db.GetCollection(chaindb, "transferTochains").FindOne(ctx, where)
 
 	var updateStr bson.M
 	if ttcResult != nil && ttcResult.Err() == nil {
@@ -579,32 +590,43 @@ func newTranferFromChain(tfc models.TransferFromChain, haveComfirming bool) {
 		updateStr1 := bson.M{"$set": bson.M{"code": 32, "status": "FROM_CHAIN", "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": `FROM_CHAIN at: ${Date.now()}`}}
 
 		id, _ := primitive.ObjectIDFromHex(ttc.RequestId)
-		db.GetCollection(commdb, "transfers").FindOneAndUpdate(ctx, bson.M{"_id": id}, updateStr1)
+		db.GetCollection(commondb, "transfers").FindOneAndUpdate(ctx, bson.M{"_id": id}, updateStr1)
 
 		// 添加地址到订阅
 
-		addSubscribesHandle(ttc.From, ttc.ID.String())
+		addSubscribesHandle(ttc.From, ttc.ID.Hex())
 	}
+	if ttcResult.Err() != nil && ttcResult.Err() != mongo.ErrNoDocuments {
+		fmt.Println("ttcResult", ttcResult.Err())
+	}
+	if tx.ID.IsZero() {
+		tx.ID = primitive.NewObjectID()
+	}
+
 	updateStr = bson.M{"$set": tx}
+	fmt.Println("tx", updateStr)
 
-	if !haveComfirming {
-		db.GetCollection(dbname, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
+	if confirmedNumber == 0 {
+		db.GetCollection(chaindb, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
+		// TODO: 查询 订阅表
+		onchain(tx.From, "OUT", tx)
+		onchain(tx.To, "IN", tx)
+
 	} else {
-		// db.GetCollection(dbname, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
-	}
+		db.GetCollection(chaindb, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
+		onchain(tx.From, "OUT", tx)
+		onchain(tx.To, "IN", tx)
 
-	// TODO: 查询 订阅表
-	onchain(tx.From, "OUT", tx)
-	onchain(tx.To, "IN", tx)
+	}
 
 }
 
+// TODO: 待完成
 func newBlockNotify(blockNumber string) {
 	// if (this.inProcess) return
 
 	// this.inProcess = true
-	chaindb := "vct"
-	// commdb := "dynasty"
+
 	ctx := context.Background()
 	// const safeBlockNumber = blockNumber - this.confirmedMaxNum + 1
 	// // this.logger.info('[DynastyThreadUtil:newBlockNotify]', blockNumber, 'safeBlockNumber', safeBlockNumber)
@@ -711,7 +733,7 @@ func onchain(address, inout string, tx models.TransferFromChain) {
 		"inout":   inout,
 		"address": address,
 		"record": map[string]string{
-			"tfcId":     tx.ID.String(),
+			"tfcId":     tx.ID.Hex(),
 			"chain":     tx.Chain,
 			"coin":      tx.Coin,
 			"tokenKey":  tx.TokenKey,
@@ -727,26 +749,28 @@ func onchain(address, inout string, tx models.TransferFromChain) {
 	if inout == "OUT" {
 		notifyData["requestId"] = tx.RequestId
 	}
+	if confirmedNumber == 0 {
+		notifyData["finish"] = true
+	}
 	for _, acc := range accountIds {
 		sendNotify("TRANSFER_ACTION", acc, address, notifyData) //TODO: _account
 	}
 
 }
 
-func finish(address, inout string, tx models.TransferFromChain) {
+func finish(address, inout string, tx map[string]string) {
 
 	accountIds := getSubscribeIds(address)
 
 	notifyData := map[string]interface{}{
-		"status":   "TRANSFER_FINISH",
-		"inout":    inout,
-		"address":  address,
-		"tfcId":    tx.ID.String(),
-		"blockNum": tx.BlockHeight,
-		"chain":    tx.Chain,
+		"status":  "TRANSFER_FINISH",
+		"inout":   inout,
+		"address": address,
+		"tfcId":   tx["id"],
+		"txid":    tx["txid"],
 	}
 	if inout == "OUT" {
-		notifyData["requestId"] = tx.RequestId
+		notifyData["requestId"] = tx["requestId"]
 	}
 	for _, acc := range accountIds {
 		sendNotify("TRANSFER_ACTION", acc, address, notifyData) //TODO: _account
@@ -755,34 +779,32 @@ func finish(address, inout string, tx models.TransferFromChain) {
 
 func sendNotify(key, accountID, address string, data interface{}) {
 
+	fmt.Println("sendNotify", key, accountID, address, data)
 	// mongo 取出来的有时会有“ " ”
 	accountID = strings.Trim(accountID, "\"")
 	// op := options.FindOneAndUpdate().SetUpsert(true)
-	insertresult, err := db.GetCollection(commdb, "notifytasks").InsertOne(context.Background(), bson.M{"key": key, "data": data, "address": address, "_account": accountID})
+	insertresult, err := db.GetCollection(commondb, "notifytasks").InsertOne(context.Background(), bson.M{"key": key, "data": data, "address": address, "_account": accountID})
 
 	if err != nil {
 		fmt.Println("通知 消息 存库失败", err)
 	}
 	fmt.Println("insertresult", insertresult)
-	// const task = new this.commdb.models.NotifyTask({ key, data, _account: accountId, address })
-	// const s = await task.save()
-	// this.sendToKafka({ accountId, id: s._id }, 'NOTIFY_TASK', key)
 }
 
 func addSubscribesHandle(address, account string) {
 	id, _ := primitive.ObjectIDFromHex(account)
 	where := bson.M{"_id": id}
 	up := bson.M{"$addToSet": bson.M{"addresses": address}}
-	db.GetCollection(commdb, "subscribes").FindOneAndUpdate(context.Background(), where, up)
+	db.GetCollection(commondb, "subscribes").FindOneAndUpdate(context.Background(), where, up)
 }
 
 func getSubscribeIds(address string) []string {
-	commdb := "dynasty"
-	cursor, _ := db.GetCollection(commdb, "subscribes").Find(context.Background(), bson.M{"addresses": address})
+
+	cursor, _ := db.GetCollection(commondb, "subscribes").Find(context.Background(), bson.M{"addresses": address})
 	accountID := []string{}
 	defer cursor.Close(context.Background())
 	if cursor.Next(context.Background()) {
-		id := cursor.Current.Lookup("_id").String()
+		id := cursor.Current.Lookup("_id").String() //TODO： 验证
 		accountID = append(accountID, id)
 	}
 	return accountID
