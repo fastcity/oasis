@@ -17,36 +17,47 @@ import (
 
 func init() {
 
-	// ns := beego.NewNamespace("/v1",
-	// 	beego.NSNamespace("/object",
-	// 		beego.NSInclude(
-	// 			&controllers.ObjectController{},
-	// 		),
-	// 	),
-	// 	beego.NSNamespace("/user",
-	// 		beego.NSInclude(
-	// 			&controllers.UserController{},
-	// 		),
-	// 	),
-	// )
-	// beego.AddNamespace(ns)
-
 	db := db.GetDB()
-	// context.BeegoInput .SetData()
-	// context.BeegoInput
+
+	ns := beego.NewNamespace("/v1",
+		beego.NSNamespace("/object",
+			beego.NSInclude(
+				&controllers.ObjectController{},
+			),
+		),
+		beego.NSNamespace("/user",
+			beego.NSInclude(
+				&controllers.UserController{},
+			),
+		),
+	)
+	beego.AddNamespace(ns)
 
 	ft := &controllers.TransferController{DB: db}
 	// beego.Router("/", &controllers.MainController{})
 	// beego.Router("api/v1/", &controllers.TransferController{}, "post:CreateTransferTxData")
-	beego.Router("api/v1/balance", &controllers.BalanceController{})
-	beego.Router("api/v1/createTransferTxData", ft, "post:CreateTransferTxData")
-	beego.Router("api/v1/submitTx", ft, "post:SubmitTx")
+	// beego.Router("api/v1/balance", &controllers.BalanceController{})
+	// beego.Router("api/v1/createTransferTxData", ft, "post:CreateTransferTxData")
+	// beego.Router("api/v1/submitTx", ft, "post:SubmitTx")
 
-	nsAcc := beego.NewNamespace("api/v1",
-		beego.NSInclude(&controllers.AccountController{DB: db}),
-		beego.NSRouter("/subscribe", &controllers.AccountController{DB: db}, "post:subscribe"),
-		// beego.NSPost("/subscribe", &controllers.AccountController{DB: db}),
+	// beego.Router("api/v1/account", &controllers.AccountController{DB: db})
+
+	nsAcc := beego.NewNamespace("/api/v1",
+		// beego.NSBefore(middleware.FilterUser),
+		beego.NSRouter("/balance", &controllers.BalanceController{}),
+		beego.NSRouter("/createTransferTxData", ft, "post:CreateTransferTxData"),
+		beego.NSRouter("/submitTx", ft, "post:SubmitTx"),
+
+		beego.NSRouter("/getTxStatus", ft, "get:GetTxStatus"),
+
+		beego.NSRouter("/subscribe", &controllers.AccountController{DB: db}, "post:Subscribe"),
+
+		beego.NSNamespace("/account",
+			beego.NSInclude(
+				&controllers.AccountController{DB: db},
+			),
+		),
 	)
 	beego.AddNamespace(nsAcc)
-	beego.InsertFilter("/*", beego.BeforeRouter, middleware.FilterUser)
+	beego.InsertFilter("/*", beego.BeforeRouter, middleware.FilterUser) // TODO:  account 不用
 }

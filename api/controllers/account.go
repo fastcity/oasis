@@ -21,6 +21,26 @@ type AccountController struct {
 	DB db.MongoInterface
 }
 
+// @router / [get]
+func (account *AccountController) Get() {
+
+	defer account.ServeJSON()
+
+	apiKey := account.GetString("apiKey")
+
+	where := bson.M{"apiKey": apiKey}
+
+	// op := options.FindOneAndUpdate().SetUpsert(true)
+
+	result := account.DB.ConnCollection("accounts").FindOne(context.Background(), where)
+
+	var data map[string]interface{}
+	result.Decode(&data)
+	account.Data["json"] = map[string]interface{}{
+		"code": 0,
+		"data": data,
+	}
+}
 func (account *AccountController) Post() {
 	defer account.ServeJSON()
 
@@ -69,7 +89,7 @@ func (account *AccountController) Put() {
 	}
 }
 
-func (account *AccountController) subscribe() {
+func (account *AccountController) Subscribe() {
 	defer account.ServeJSON()
 
 	chain := account.GetString("chain")

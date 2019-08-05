@@ -204,3 +204,34 @@ func (tf *TransferController) SubmitTx() {
 		"msg": "create task success, the status of task will be notify",
 	}
 }
+
+func (tf *TransferController) GetTxStatus() {
+	defer tf.ServeJSON()
+	requestID := tf.GetString("requestId")
+
+	id, err := primitive.ObjectIDFromHex(requestID)
+	if err != nil {
+		tf.Data["json"] = map[string]interface{}{
+			"code": 40001,
+			"msg":  err.Error(),
+		}
+	}
+
+	result := tf.DB.ConnCollection("transfers").FindOne(context.Background(), bson.M{"_id": id})
+	if result.Err() != nil {
+		tf.Data["json"] = map[string]interface{}{
+			"code": 40001,
+			"msg":  result.Err().Error(),
+		}
+
+		return
+	}
+
+	var res map[string]interface{}
+	result.Decode(&res)
+
+	tf.Data["json"] = map[string]interface{}{
+		"code": 0,
+		"data": res,
+	}
+}
