@@ -13,6 +13,6 @@ func main() {
 	}
 	// beego.LoadAppConfig("ini", "conf/app2.conf")
 	beego.Run()
-}
 
-//
+	// beego.RunWithMiddleWares("127.0.0.1:8080", midd)
+}

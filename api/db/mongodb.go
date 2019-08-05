@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type Conn struct {
+type conn struct {
 	Addr   string
 	Port   int
 	dbName string
@@ -20,32 +20,60 @@ type Conn struct {
 	*mongo.Database
 }
 
+var con *conn
+
 type MongoInterface interface {
 	// SetDBName(string) MongoInterface
 	GetConn() MongoInterface
 	ConnDatabase(string) MongoInterface
 	ConnCollection(string) *mongo.Collection
+	connect() bool
 }
 
-func Init() MongoInterface {
+func GetDB() MongoInterface {
+
+	if con != nil && con.connect() {
+		return con
+	}
 	host := beego.AppConfig.String("mongohost")
 	port := beego.AppConfig.String("mongoport")
 	mongodbName := beego.AppConfig.String("mongodbName")
 	// url := fmt.Sprintf("%s:%s/%s", host, port, mongodbName)
-	url := fmt.Sprintf("%s:%s", host, port)
-	return New(url).GetConn().ConnDatabase(mongodbName)
+	addr := fmt.Sprintf("%s:%s", host, port)
+
+	con = &conn{Addr: addr}
+	// con := &Conn{Addr: addr}
+
+	return con.GetConn().ConnDatabase(mongodbName)
 }
 
-func New(addr string) MongoInterface {
-	return &Conn{Addr: addr}
-}
+// func _init() MongoInterface {
+
+// 	if conn != nil && conn.connect() {
+// 		return conn
+// 	}
+// 	host := beego.AppConfig.String("mongohost")
+// 	port := beego.AppConfig.String("mongoport")
+// 	mongodbName := beego.AppConfig.String("mongodbName")
+// 	// url := fmt.Sprintf("%s:%s/%s", host, port, mongodbName)
+// 	addr := fmt.Sprintf("%s:%s", host, port)
+
+// 	conn = &Conn{Addr: addr}
+// 	// con := &Conn{Addr: addr}
+
+// 	return conn.GetConn().ConnDatabase(mongodbName)
+// }
+
+// func New(addr string) MongoInterface {
+// 	return &Conn{Addr: addr}
+// }
 
 // func (con *Conn) SetDBName(name string) MongoInterface {
 // 	con.db = name
 // 	return con
 // }
 
-func (con *Conn) GetConn() MongoInterface {
+func (con *conn) GetConn() MongoInterface {
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	url := fmt.Sprintf("mongodb://%s", con.Addr)
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(url))
@@ -54,7 +82,7 @@ func (con *Conn) GetConn() MongoInterface {
 	return con
 }
 
-func (con *Conn) ConnDatabase(dbs string) MongoInterface {
+func (con *conn) ConnDatabase(dbs string) MongoInterface {
 	if con.err != nil {
 		return con
 	}
@@ -70,7 +98,7 @@ func (con *Conn) ConnDatabase(dbs string) MongoInterface {
 	return con
 }
 
-func (con *Conn) ConnCollection(table string) *mongo.Collection {
+func (con *conn) ConnCollection(table string) *mongo.Collection {
 	if con.err != nil {
 		return nil
 	}
@@ -78,4 +106,14 @@ func (con *Conn) ConnCollection(table string) *mongo.Collection {
 	collection := con.Database.Collection(table)
 	con.Collection = collection
 	return collection
+}
+
+func (con *conn) connect() bool {
+	if con.Client != nil {
+		return true
+	}
+	// if con.Client.Ping(context.Background, nil) {
+	// 重连?
+	// }
+	return false
 }

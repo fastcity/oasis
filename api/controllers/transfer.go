@@ -138,8 +138,12 @@ func (tf *TransferController) CreateTransferTxData() {
 //SubmitTx 提交签名事务
 func (tf *TransferController) SubmitTx() {
 	defer tf.ServeJSON()
+
+	d := tf.Data["db"].(db.MongoInterface)
+	fmt.Println(d)
+
 	// var transfer models.Transfer
-	// json.Unmarshal(tf.Ctx.Input.RequestBody, &transfer) // 不好使 TODO: 带研究
+	// json.Unmarshal(tf.Ctx.Input.RequestBody, &transfer) // 不好使 传 json TODO: 带研究
 	singedRawTx := tf.GetString("singedRawTx")
 	requestID := tf.GetString("requestId")
 

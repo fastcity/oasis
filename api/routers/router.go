@@ -13,7 +13,6 @@ import (
 	"century/oasis/api/middleware"
 
 	"github.com/astaxie/beego"
-	"github.com/astaxie/beego/context"
 )
 
 func init() {
@@ -32,10 +31,9 @@ func init() {
 	// )
 	// beego.AddNamespace(ns)
 
-	db := db.Init()
+	db := db.GetDB()
 	// context.BeegoInput .SetData()
-	context.BeegoInput
-	beego.InsertFilter("/*", beego.BeforeRouter, middleware.FilterUser)
+	// context.BeegoInput
 
 	ft := &controllers.TransferController{DB: db}
 	// beego.Router("/", &controllers.MainController{})
@@ -52,5 +50,5 @@ func init() {
 		),
 	)
 	beego.AddNamespace(nsAcc)
-
+	beego.InsertFilter("/*", beego.BeforeRouter, middleware.FilterUser)
 }
