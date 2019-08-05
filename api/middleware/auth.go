@@ -37,6 +37,7 @@ var FilterUser = func(ctx *context.Context) {
 	}
 	dbs := db.GetDB()
 	ctx.Input.SetData("db", dbs)
+
 	result := dbs.ConnCollection("accounts").FindOne(ct.Background(), bson.M{"apiKey": apiKey})
 	fmt.Println(result)
 	if result.Err() != nil {
@@ -50,6 +51,7 @@ var FilterUser = func(ctx *context.Context) {
 	}
 
 	rawByte, _ := result.DecodeBytes()
+
 	raw := rawByte.Lookup("apiKey").String() // 坑 返回的是json ，单纯字符串会有 /""/ 应去掉
 	raw = strings.TrimSuffix(raw, "\"")
 	if raw == "" {
@@ -60,6 +62,10 @@ var FilterUser = func(ctx *context.Context) {
 		ctx.Output.SetStatus(http.StatusUnauthorized)
 		ctx.Output.JSON(res, false, false)
 		return
+	}
+	rawid := rawByte.Lookup("_id")
+	if id, ok := rawid.ObjectIDOK(); ok {
+		ctx.Input.SetData("userId", id.Hex())
 	}
 
 }

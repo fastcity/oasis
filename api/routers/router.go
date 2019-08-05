@@ -43,11 +43,9 @@ func init() {
 	beego.Router("api/v1/submitTx", ft, "post:SubmitTx")
 
 	nsAcc := beego.NewNamespace("api/v1",
-		beego.NSNamespace("/subscribe",
-			beego.NSInclude(
-				&controllers.AccountController{DB: db},
-			),
-		),
+		beego.NSInclude(&controllers.AccountController{DB: db}),
+		beego.NSRouter("/subscribe", &controllers.AccountController{DB: db}, "post:subscribe"),
+		// beego.NSPost("/subscribe", &controllers.AccountController{DB: db}),
 	)
 	beego.AddNamespace(nsAcc)
 	beego.InsertFilter("/*", beego.BeforeRouter, middleware.FilterUser)
