@@ -41,6 +41,8 @@ func (account *AccountController) Get() {
 		"data": data,
 	}
 }
+
+// @router / [post]
 func (account *AccountController) Post() {
 	defer account.ServeJSON()
 
@@ -61,6 +63,7 @@ func (account *AccountController) Post() {
 	}
 }
 
+// @router / [put]
 func (account *AccountController) Put() {
 	defer account.ServeJSON()
 

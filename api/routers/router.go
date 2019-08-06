@@ -59,5 +59,5 @@ func init() {
 		),
 	)
 	beego.AddNamespace(nsAcc)
-	beego.InsertFilter("/*", beego.BeforeRouter, middleware.FilterUser) // TODO:  account 不用
+	beego.InsertFilter("/*", beego.BeforeRouter, middleware.FilterUser) // TODO:  /api/v1/account 不用过滤 正则
 }
