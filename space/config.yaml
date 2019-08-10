@@ -1,0 +1,17 @@
+dev:
+    host: 7788
+    baseUrl: "http://127.0.0.1:8080"
+    apiKey: "12345678"
+    secKey: "87654321"
+
+test:
+    host: 7788
+    baseUrl: "http://127.0.0.1:8080"
+    apiKey: "12345678"
+    secKey: "87654321"
+
+prod:
+    host: 7788
+    baseUrl: "http://127.0.0.1:8080"
+    apiKey: "12345678"
+    secKey: "87654321"
