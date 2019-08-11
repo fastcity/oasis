@@ -45,7 +45,20 @@ var FilterUser = func(ctx *context.Context) {
 
 		result.Decode(&user)
 
-		if user["apiKey"].(string) == "" {
+		// switch str := user["apiKey"].(type) {
+		// case string:
+		// 	if str == "" {
+		// 		res := map[string]interface{}{
+		// 			"code": 40001,
+		// 			"msg":  "not find apiKey in db",
+		// 		}
+		// 		ctx.Output.SetStatus(http.StatusUnauthorized)
+		// 		ctx.Output.JSON(res, false, false)
+		// 		return
+		// 	}
+
+		// }
+		if _, ok := user["apiKey"]; !ok || user["apiKey"].(string) == "" {
 			res := map[string]interface{}{
 				"code": 40001,
 				"msg":  "not find apiKey in db",
@@ -54,6 +67,16 @@ var FilterUser = func(ctx *context.Context) {
 			ctx.Output.JSON(res, false, false)
 			return
 		}
+
+		// if user["apiKey"].(string) == "" {
+		// 	res := map[string]interface{}{
+		// 		"code": 40001,
+		// 		"msg":  "not find apiKey in db",
+		// 	}
+		// 	ctx.Output.SetStatus(http.StatusUnauthorized)
+		// 	ctx.Output.JSON(res, false, false)
+		// 	return
+		// }
 
 		ctx.Input.SetData("userId", user["_id"])
 

@@ -10,17 +10,35 @@ import (
 
 type App struct {
 	baseUrl string
+	ApiKey  string
+	SecKey  string
 }
 type AppInterface interface {
+	SetBaseUrl(base string) AppInterface
+	SetApikey(apikey string) AppInterface
+	SetSecKey(secKey string) AppInterface
+
 	RedirectGet(path, query string) ([]byte, error)
 	RedirectPsot(path, requestBody string) ([]byte, error)
 	RedirectAny(ctx *gin.Context) ([]byte, error)
 }
 
-func newApp(base string) AppInterface {
-	return &App{
-		baseUrl: base,
-	}
+func NewApp() AppInterface {
+	return &App{}
+}
+
+func (a *App) SetBaseUrl(base string) AppInterface {
+	a.baseUrl = base
+	return a
+}
+
+func (a *App) SetApikey(apikey string) AppInterface {
+	a.ApiKey = apikey
+	return a
+}
+func (a *App) SetSecKey(secKey string) AppInterface {
+	a.SecKey = secKey
+	return a
 }
 
 //RedirectGet RedirectGet
@@ -62,5 +80,11 @@ func (a *App) RedirectAny(ctx *gin.Context) ([]byte, error) {
 
 	respbody, err := ioutil.ReadAll(resp.Body)
 	return respbody, err
-	// return resp
+
+	// if err != nil {
+	// 	c.JSON(http.StatusOK, gin.H{"code": 40000, "msg": err.Error()})
+	// 	return
+	// }
+	// c.Data(http.StatusOK, "application/json", resp)
+
 }

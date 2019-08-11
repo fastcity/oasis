@@ -22,18 +22,23 @@ var (
 )
 
 func balance(c *gin.Context) {
+	fmt.Println("balance")
+
 	baseURL := viper.GetString(env + ".baseUrl")
 	url := baseURL + c.Request.URL.Path
 	query := c.Request.URL.RawQuery
-	resp, err := api.RedirectGet(url, query)
+	resp, err := app.RedirectGet(url, query)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"code": 40000, "msg": err.Error()})
 		return
 	}
 
-	c.Writer.Write(resp)
+	// c.Header("Content-Type", "application/json")
+	// c.Writer.Header().Add("Content-Type", "application/json")
+	// c.Writer.Write(resp)
 
-	// c.JSON(http.StatusOK, resp)
+	c.Data(http.StatusOK, "application/json", resp)
+
 }
 func any(c *gin.Context) {
 	resp, err := app.RedirectAny(c)
@@ -41,8 +46,8 @@ func any(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"code": 40000, "msg": err.Error()})
 		return
 	}
-
-	c.Writer.Write(resp)
+	c.Data(http.StatusOK, "application/json", resp)
+	// c.Writer.Write(resp)
 }
 
 func setupRouter() *gin.Engine {
@@ -66,38 +71,32 @@ func setupRouter() *gin.Engine {
 		}
 	})
 
-	// Authorized group (uses gin.BasicAuth() middleware)
-	// Same than:
-	// authorized := r.Group("/")
-	// authorized.Use(gin.BasicAuth(gin.Credentials{
-	//	  "foo":  "bar",
-	//	  "manu": "123",
-	//}))
-	authorized := r.Group("/", gin.BasicAuth(gin.Accounts{
-		"foo":  "bar", // user:foo password:bar
-		"manu": "123", // user:manu password:123
-	}))
+	// authorized := r.Group("/", gin.BasicAuth(gin.Accounts{
+	// 	"foo":  "bar", // user:foo password:bar
+	// 	"manu": "123", // user:manu password:123
+	// }))
 
-	authorized.POST("admin", func(c *gin.Context) {
-		user := c.MustGet(gin.AuthUserKey).(string)
+	// authorized.POST("admin", func(c *gin.Context) {
+	// 	user := c.MustGet(gin.AuthUserKey).(string)
 
-		// Parse JSON
-		var json struct {
-			Value string `json:"value" binding:"required"`
-		}
+	// 	// Parse JSON
+	// 	var json struct {
+	// 		Value string `json:"value" binding:"required"`
+	// 	}
 
-		if c.Bind(&json) == nil {
-			db[user] = json.Value
-			c.JSON(http.StatusOK, gin.H{"status": "ok"})
-		}
-	})
+	// 	if c.Bind(&json) == nil {
+	// 		db[user] = json.Value
+	// 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	// 	}
+	// })
 
 	index := r.Group("/api").Group("/v1")
 	{
 		index.GET("/balance", balance)
+		index.Any("*", any)
 	}
 
-	r.Any("*", any)
+	// r.Any("/", any)
 	// r.GET("/balance", &controllers.BalanceController{}),
 	// r.GET("/createTransferTxData", ft, "post:CreateTransferTxData"),
 	// r.GET("/submitTx", ft, "post:SubmitTx"),
@@ -151,7 +150,10 @@ func main() {
 	initConf()
 
 	baseURL := viper.GetString(env + ".baseUrl")
-	app = newApp(baseURL)
+	apikey := viper.GetString(env + ".apiKey")
+	seckey := viper.GetString(env + ".secKey")
+
+	app = api.NewApp().SetBaseUrl(baseURL).SetApikey(apikey).SetSecKey(seckey)
 	r := setupRouter()
 	// Listen and Server in 0.0.0.0:8080
 	host := viper.GetInt(env + ".host")
