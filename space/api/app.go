@@ -1,7 +1,7 @@
 package api
 
 import (
-	"io/ioutil"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -10,17 +10,21 @@ import (
 
 type App struct {
 	baseUrl string
-	ApiKey  string
-	SecKey  string
+	apiKey  string
+	secKey  string
+	ctx     *gin.Context
+
+	form map[string]string
 }
 type AppInterface interface {
 	SetBaseUrl(base string) AppInterface
 	SetApikey(apikey string) AppInterface
 	SetSecKey(secKey string) AppInterface
+	SetGinCtx(ctx *gin.Context) AppInterface
 
-	RedirectGet(path, query string) ([]byte, error)
-	RedirectPsot(path, requestBody string) ([]byte, error)
-	RedirectAny(ctx *gin.Context) ([]byte, error)
+	RedirectGet()
+	RedirectPsot()
+	// RedirectAny()
 }
 
 func NewApp() AppInterface {
@@ -33,58 +37,83 @@ func (a *App) SetBaseUrl(base string) AppInterface {
 }
 
 func (a *App) SetApikey(apikey string) AppInterface {
-	a.ApiKey = apikey
+	a.apiKey = apikey
 	return a
 }
 func (a *App) SetSecKey(secKey string) AppInterface {
-	a.SecKey = secKey
+	a.secKey = secKey
+	return a
+}
+func (a *App) SetGinCtx(ctx *gin.Context) AppInterface {
+	a.ctx = ctx
 	return a
 }
 
 //RedirectGet RedirectGet
-func (a *App) RedirectGet(path, query string) ([]byte, error) {
-	body := path + "?" + query
+func (a *App) RedirectGet() {
+
+	// path := a.baseUrl + a.ctx.Request.RequestURI
+	query := a.ctx.Request.URL.RawQuery
+
+	url := a.baseUrl + a.ctx.Request.RequestURI
+	q := a.ctx.Request.Form
+	fmt.Println(q)
+	signatrue := sign(query, a.secKey)
+	body := url + "&signatrue=" + signatrue
 	resp, err := http.Get(body)
 	if err != nil {
-		return nil, err
+		// c.Status(http.StatusServiceUnavailable)
+		a.ctx.JSON(resp.StatusCode, gin.H{"code": 40000, "msg": err.Error()})
+		return
 	}
 
-	respbody, err := ioutil.ReadAll(resp.Body)
-	return respbody, err
-	// return resp
+	contentLength := resp.ContentLength
+	contentType := resp.Header.Get("Content-Type")
+	a.ctx.DataFromReader(http.StatusOK, contentLength, contentType, resp.Body, map[string]string{})
+	// c.Data(http.StatusOK, contentType, respbody)
 }
 
-func (a *App) RedirectPsot(path, requestBody string) ([]byte, error) {
+func (a *App) RedirectPsot() {
+	path := a.baseUrl + a.ctx.Request.URL.Path
+	requestBody := a.ctx.Request.URL.RawQuery
 	body := strings.NewReader(requestBody)
-	resp, err := http.Post(path, "application/x-www-form-urlencoded", body)
+	resp, err := http.Post(path, "application/x-www-form-urlencoded", body) //TODO: 原始type
 	if err != nil {
-		return nil, err
+		a.ctx.JSON(resp.StatusCode, gin.H{"code": 40000, "msg": err.Error()})
+		return
 	}
 
-	respbody, err := ioutil.ReadAll(resp.Body)
-	return respbody, err
+	// respbody, err := ioutil.ReadAll(resp.Body)
+
+	contentLength := resp.ContentLength
+	contentType := resp.Header.Get("Content-Type")
+	a.ctx.DataFromReader(http.StatusOK, contentLength, contentType, resp.Body, map[string]string{})
+	// return respbody, err
 	// return resp
 }
 
-func (a *App) RedirectAny(ctx *gin.Context) ([]byte, error) {
-	url := a.baseUrl + ctx.Request.URL.Path
-	if ctx.Request.Method == "GET" {
-		query := ctx.Request.URL.RawQuery
-		return a.RedirectGet(url, query)
+func (a *App) RedirectAny() {
+	if a.ctx.Request.Method == "GET" {
+		a.RedirectGet()
+		return
 	}
 
-	resp, err := http.Post(url, "application/x-www-form-urlencoded", ctx.Request.Body)
-	if err != nil {
-		return nil, err
+	if a.ctx.Request.Method == "POST" {
+		a.RedirectPsot()
+		return
 	}
-
-	respbody, err := ioutil.ReadAll(resp.Body)
-	return respbody, err
-
+	// resp, err := http.Post(url, "application/x-www-form-urlencoded", ctx.Request.Body)
 	// if err != nil {
-	// 	c.JSON(http.StatusOK, gin.H{"code": 40000, "msg": err.Error()})
-	// 	return
+	// 	return nil, err
 	// }
-	// c.Data(http.StatusOK, "application/json", resp)
+
+	// respbody, err := ioutil.ReadAll(resp.Body)
+	// return respbody, err
+
+}
+
+func sign(data, seckey string) string {
+
+	return ""
 
 }

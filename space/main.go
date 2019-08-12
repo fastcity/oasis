@@ -21,32 +21,52 @@ var (
 	app        api.AppInterface
 )
 
+func sign(ctx *gin.Context) {
+	if ctx.Request.Method == "GET" {
+		query := ctx.Request.URL.RawQuery
+		andQ := strings.Split(query, "&")
+
+		form := map[string]string{}
+		for _, q := range andQ {
+			p := strings.Split(q, "=")
+			form[p[0]] = p[1]
+			// for _, pi := range p {
+
+			// }
+		}
+	}
+
+}
+
 func balance(c *gin.Context) {
 	fmt.Println("balance")
 
-	baseURL := viper.GetString(env + ".baseUrl")
-	url := baseURL + c.Request.URL.Path
-	query := c.Request.URL.RawQuery
-	resp, err := app.RedirectGet(url, query)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 40000, "msg": err.Error()})
-		return
-	}
+	// baseURL := viper.GetString(env + ".baseUrl")
+	// url := baseURL + c.Request.URL.Path
+	// query := c.Request.URL.RawQuery
+	app.SetGinCtx(c).RedirectGet()
+	// app.RedirectGet(url, query, c)
+	// resp, err := app.RedirectGet(url, query)
+	// if err != nil {
+	// 	c.JSON(http.StatusOK, gin.H{"code": 40000, "msg": err.Error()})
+	// 	return
+	// }
 
-	// c.Header("Content-Type", "application/json")
-	// c.Writer.Header().Add("Content-Type", "application/json")
-	// c.Writer.Write(resp)
-
-	c.Data(http.StatusOK, "application/json", resp)
+	// // c.Header("Content-Type", "application/json")
+	// // c.Writer.Header().Add("Content-Type", "application/json")
+	// // c.Writer.Write(resp)
+	// c.Data(http.StatusOK, "application/json", resp)
 
 }
 func any(c *gin.Context) {
-	resp, err := app.RedirectAny(c)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 40000, "msg": err.Error()})
-		return
-	}
-	c.Data(http.StatusOK, "application/json", resp)
+	// fmt.Println("any")
+	// app.RedirectAny(c)
+
+	// if err != nil {
+	// 	c.JSON(http.StatusOK, gin.H{"code": 40000, "msg": err.Error()})
+	// 	return
+	// }
+	// c.Data(http.StatusOK, "application/json", resp)
 	// c.Writer.Write(resp)
 }
 
@@ -54,6 +74,7 @@ func setupRouter() *gin.Engine {
 	// Disable Console Color
 	// gin.DisableConsoleColor()
 	r := gin.Default()
+	// r.Use()
 
 	// Ping test
 	r.GET("/ping", func(c *gin.Context) {
@@ -92,11 +113,13 @@ func setupRouter() *gin.Engine {
 
 	index := r.Group("/api").Group("/v1")
 	{
+		index.Use(sign)
 		index.GET("/balance", balance)
-		index.Any("*", any)
+		index.Any("/balances", any)
+		index.Any("", any)
 	}
 
-	// r.Any("/", any)
+	r.Any("", any)
 	// r.GET("/balance", &controllers.BalanceController{}),
 	// r.GET("/createTransferTxData", ft, "post:CreateTransferTxData"),
 	// r.GET("/submitTx", ft, "post:SubmitTx"),
