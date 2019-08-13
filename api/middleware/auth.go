@@ -2,14 +2,71 @@ package middleware
 
 import (
 	"century/oasis/api/db"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"sort"
+	"strings"
 
 	ct "context"
 
 	"github.com/astaxie/beego/context"
 	"go.mongodb.org/mongo-driver/bson"
 )
+
+const (
+	defaultMaxMemory = 32 << 20 // 32 MB
+)
+
+func sortKeys(data map[string][]string) []string {
+	keys := getKeys(data)
+	sort.Strings(keys)
+	return keys
+
+}
+
+func getKeys(data map[string][]string) []string {
+	keys := []string{}
+	for k, _ := range data {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func sign(ctx *context.Context) string {
+	// form := map[string]string{}
+	ctx.Request.ParseMultipartForm(defaultMaxMemory)
+	body := ctx.Request.Form
+
+	sortKey := sortKeys(body)
+
+	data := ""
+	for _, v := range sortKey {
+		// 数组参数
+		if v != "signature" {
+			sort.Strings(body[v])
+			for _, fv := range body[v] {
+				if fv != "" {
+					data += v + "=" + fv + "&"
+				}
+			}
+		}
+	}
+	data = strings.TrimRight(data, "&")
+	fmt.Println("sign data", data)
+
+	h := md5.New()
+	h.Write([]byte(data))
+	cipherStr := h.Sum(nil)
+
+	digest := hex.EncodeToString(cipherStr)
+
+	// ctx.Set("signature", digest)
+	fmt.Printf("%s\n", digest) // 输出加密结果
+
+	return strings.ToLower(digest)
+}
 
 var FilterUser = func(ctx *context.Context) {
 
@@ -26,6 +83,22 @@ var FilterUser = func(ctx *context.Context) {
 			ctx.Output.JSON(res, false, false)
 			return
 		}
+
+		///api/v1/balance
+		// /api/v1/balance?address=ARJtq6Q46oTnxDwvVqMgDtZeNxs7Ybt81A&apiKey=12345678&signature=c191872682d3ad1ac0ad6ff71c3fc62b
+		// 5221ef283de4018031bbde93b1a0aa37
+		si := sign(ctx)
+		signature := ctx.Input.Query("signature")
+		if strings.Compare(si, strings.ToLower(signature)) != 0 {
+			res := map[string]interface{}{
+				"code": 40001,
+				"msg":  "signature not match,show be" + si + "get" + signature,
+			}
+			ctx.Output.SetStatus(http.StatusUnauthorized)
+			ctx.Output.JSON(res, false, false)
+			return
+		}
+
 		dbs := db.GetDB()
 		ctx.Input.SetData("db", dbs)
 

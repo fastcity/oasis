@@ -2,11 +2,15 @@ package main
 
 import (
 	"century/oasis/space/api"
+	"crypto/md5"
+	"encoding/hex"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -21,43 +25,67 @@ var (
 	app        api.AppInterface
 )
 
-func sign(ctx *gin.Context) {
-	if ctx.Request.Method == "GET" {
-		query := ctx.Request.URL.RawQuery
-		andQ := strings.Split(query, "&")
+const (
+	defaultMaxMemory = 32 << 20 // 32 MB
+)
 
-		form := map[string]string{}
-		for _, q := range andQ {
-			p := strings.Split(q, "=")
-			form[p[0]] = p[1]
-			// for _, pi := range p {
-
-			// }
+func crypto(data map[string][]string) map[string]string {
+	//
+	form := map[string]string{}
+	for i, v := range data {
+		// TODO: 数组
+		if len(v) == 1 && v[0] != "" {
+			form[i] = v[0]
 		}
 	}
+	return form
+}
+func sortData(data map[string]string) []string {
+	keys := []string{}
+	for k, _ := range data {
+		keys = append(keys, k)
+	}
 
+	sort.Strings(keys)
+	return keys
+
+}
+
+func sign(ctx *gin.Context) {
+	// form := map[string]string{}
+
+	ctx.Request.ParseMultipartForm(defaultMaxMemory)
+	body := ctx.Request.Form
+
+	form := crypto(body)
+	sortKey := sortData(form)
+
+	data := ""
+	for _, v := range sortKey {
+		data += v + "=" + form[v] + "&"
+	}
+	data = strings.TrimRight(data, "&")
+
+	h := md5.New()
+	h.Write([]byte(data))
+	cipherStr := h.Sum(nil)
+
+	digest := hex.EncodeToString(cipherStr)
+
+	ctx.Set("signature", digest)
+	fmt.Printf("%s\n", digest) // 输出加密结果
+	ctx.Next()
+}
+
+func createTransferTxData(c *gin.Context) {
+	app.SetGinCtx(c).RedirectPsot()
 }
 
 func balance(c *gin.Context) {
 	fmt.Println("balance")
-
-	// baseURL := viper.GetString(env + ".baseUrl")
-	// url := baseURL + c.Request.URL.Path
-	// query := c.Request.URL.RawQuery
 	app.SetGinCtx(c).RedirectGet()
-	// app.RedirectGet(url, query, c)
-	// resp, err := app.RedirectGet(url, query)
-	// if err != nil {
-	// 	c.JSON(http.StatusOK, gin.H{"code": 40000, "msg": err.Error()})
-	// 	return
-	// }
-
-	// // c.Header("Content-Type", "application/json")
-	// // c.Writer.Header().Add("Content-Type", "application/json")
-	// // c.Writer.Write(resp)
-	// c.Data(http.StatusOK, "application/json", resp)
-
 }
+
 func any(c *gin.Context) {
 	// fmt.Println("any")
 	// app.RedirectAny(c)
@@ -115,11 +143,11 @@ func setupRouter() *gin.Engine {
 	{
 		index.Use(sign)
 		index.GET("/balance", balance)
-		index.Any("/balances", any)
+		index.POST("/createTransferTxData", createTransferTxData)
+		// index.Any("/balances", any)
 		index.Any("", any)
 	}
 
-	r.Any("", any)
 	// r.GET("/balance", &controllers.BalanceController{}),
 	// r.GET("/createTransferTxData", ft, "post:CreateTransferTxData"),
 	// r.GET("/submitTx", ft, "post:SubmitTx"),
@@ -166,11 +194,21 @@ func InitViper(envprefix string, filename string, configPath []string) error {
 	return viper.ReadInConfig()   // Find and read the config file
 
 }
+func initLog() {
+	// 创建记录日志的文件
+	f, _ := os.Create("space.log")
+	// gin.DefaultWriter = io.MultiWriter(f)
+
+	// 如果需要将日志同时写入文件和控制台，请使用以下代码
+	gin.DefaultWriter = io.MultiWriter(f, os.Stdout)
+}
 
 func main() {
 	flag.StringVar(&env, "env", "dev", "env")
 	flag.Parse()
+
 	initConf()
+	initLog()
 
 	baseURL := viper.GetString(env + ".baseUrl")
 	apikey := viper.GetString(env + ".apiKey")
