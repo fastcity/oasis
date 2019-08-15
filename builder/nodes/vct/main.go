@@ -1,7 +1,7 @@
 package main
 
 import (
-	"century/oasis/builder/nodes/vct/util/chain"
+	gchain "century/oasis/builder/nodes/vct/util/chain"
 	"century/oasis/builder/nodes/vct/util/comm"
 	"century/oasis/builder/nodes/vct/util/dbs"
 	"century/oasis/builder/nodes/vct/util/dbs/models"
@@ -13,11 +13,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/buger/jsonparser"
-	"github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -61,29 +62,41 @@ func main() {
 		InitViper(strings.ToLower(chain), strings.ToLower(chain), path)
 	}
 
+	confirmedNumber = viper.GetInt("chain.confirmedNumber")
+
+	go loopReadAndPaser()
+
+	initRouter(nodeURL)
+	initKafka()
+	initDB()
+
+}
+
+func initDB() {
 	db = dbs.New(viper.GetString("db.addr"))
 	err := db.GetConn()
 	if err != nil {
 		fmt.Println("connect mongo error", err)
 	}
+	defer db.Close()
 
-	confirmedNumber = viper.GetInt("chain.confirmedNumber")
 	commondb = viper.GetString("chain.commondb")
 	chaindb = viper.GetString("chain.chaindb")
+}
 
+func initKafka() {
 	kModel = comm.NewConsumer(viper.GetStringSlice("kafka.service"))
+	kModel.SetTopics(viper.GetStringSlice("kafka.topics"))
+
 	// if kModel.Consumer == nil {
 	// 	fmt.Println("init kafka fail-------")
 	// }
 	defer kModel.Close()
-	go loopReadAndPaser()
-	nodeURL := fmt.Sprintf("%s:%s", viper.GetString("api.host"), viper.GetString("api.port"))
-	fmt.Println("nodeURL", nodeURL)
-	router(nodeURL)
-
+	// kModel.SetTopics(viper.GetStringSlice("kafka.topics"))
 }
 
-func router(url string) {
+func initRouter() {
+
 	api := fmt.Sprintf("%s://%s:%s", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
 	chainConf = gchain.NewChainAPi(api)
 
@@ -99,6 +112,7 @@ func router(url string) {
 	http.HandleFunc("/api/v1/submitTxData", submitTxDtaHandler)
 	http.HandleFunc("/api/v1/getBlockHeight", getBlockHeight)
 	http.HandleFunc("/api/v1/getBalance", getBalance)
+	http.HandleFunc("/api/v1/history", getHistory)
 
 	err := http.ListenAndServe(url, nil)
 	if err != nil {
@@ -381,6 +395,103 @@ func getBalance(w http.ResponseWriter, r *http.Request) {
 	// fmt.Fprintln(w, string(ba))
 	fmt.Println("ba", ba)
 	w.Write(ba)
+}
+
+func getHistory(w http.ResponseWriter, r *http.Request) {
+	res := &Result{}
+	defer func(res *Result) {
+		// if res.Code != 0 {
+		// 	setSendTransactionError(requestID, res.Msg)
+		// }
+
+		ba, _ := json.Marshal(res)
+		w.Header().Add("Content-Type", "application/json")
+		w.Write(ba)
+	}(res)
+	address := r.FormValue("address")
+	tokenKey := r.FormValue("tokenKey")
+	if address == "" {
+		res.Code = 40000
+		res.Msg = "address empty"
+
+		// ba, _ := json.Marshal(res)
+		// w.Write(ba)
+		return
+	}
+	pageIndex := r.PostFormValue("pageIndex")
+
+	pageSize := r.PostFormValue("pageIndex")
+
+	pi := 1
+	ps := 100
+
+	if pageIndex != "" {
+		pi, _ = strconv.Atoi(pageIndex)
+	}
+	if pi <= 0 {
+		pi = 1
+	}
+
+	if pageSize == "" {
+		ps, _ = strconv.Atoi(pageSize)
+	}
+	if ps <= 0 {
+		ps = 100
+	}
+
+	op := options.Find().SetSkip(int64(ps * (pi - 1))).SetLimit(int64(ps)).SetSort(bson.M{"createdAt": -1})
+
+	where := bson.D{
+		{
+			"$or", bson.A{
+				bson.D{{"from", address}},
+				bson.D{{"to", address}},
+			},
+		},
+	}
+
+	if tokenKey != "" {
+		// bson.M 无序
+		where = bson.D{
+			{
+				"$or", bson.A{
+					bson.D{{"from", address}},
+					bson.D{{"to", address}},
+				},
+			}, {"tokenKey", tokenKey},
+		}
+	}
+
+	total, _ := db.GetCollection("astro", "transferfromchains").CountDocuments(context.Background(), where)
+
+	result, err := db.GetCollection("astro", "transferfromchains").Find(context.Background(), where, op)
+
+	if err != nil {
+		res.Code = 40000
+		res.Msg = err.Error()
+		return
+	}
+	// var history map[string]interface{}
+	// result.Decode(&history)
+	var history []map[string]interface{}
+
+	defer result.Close(context.Background())
+
+	for result.Next(context.Background()) {
+		var historyOne map[string]interface{}
+		result.Decode(&historyOne)
+		history = append(history, historyOne)
+	}
+
+	count := len(history)
+	// var history []map[string]interface{}
+	// result.Decode(&history)
+	res.Code = 0
+	res.Data = map[string]interface{}{
+		"items": history,
+		"count": count,
+		"total": total,
+	}
 }
 
 //InitViper we can set viper which fabric peer is used

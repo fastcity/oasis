@@ -18,6 +18,9 @@ db:
 kafka:
     service:
         - "127.0.0.1:9092"
+    topics:
+        - VCT_TX
+    
 
 chain:
     confirmedNumber: 0

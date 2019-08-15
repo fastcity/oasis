@@ -18,6 +18,7 @@ type Conn struct {
 type MongoI interface {
 	GetConn() error
 	GetCollection(db, table string) *mongo.Collection
+	Close()
 }
 
 func New(addr string) MongoI {
@@ -40,4 +41,11 @@ func (con *Conn) GetCollection(db, table string) *mongo.Collection {
 func CreateIndexView(coll *mongo.Collection) mongo.IndexView {
 	//  coll.Indexes().CreateOne()
 	return coll.Indexes()
+}
+
+func (con *Conn) Close() {
+	if con.Client != nil {
+		con.Client.Disconnect(context.TODO())
+	}
+
 }

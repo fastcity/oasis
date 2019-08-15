@@ -2,6 +2,7 @@ package comm
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Shopify/sarama"
 )
@@ -13,9 +14,14 @@ type kkModel struct {
 	Config   *sarama.Config
 	Producer sarama.SyncProducer
 	Consumer sarama.Consumer
+	topics   []string
+	keys     map[string]chan []byte
 }
 
 type KInterface interface {
+	SetKeys([]string) KInterface
+	AddKey(string, chan []byte) KInterface
+	SetTopics([]string) KInterface
 	SendMsg(string, string) error
 	ReciveMsg(chan []byte)
 	Close()
@@ -56,6 +62,27 @@ func NewConsumer(Addrs []string) KInterface {
 	return m
 }
 
+func (k *kkModel) SetChain(chain string) KInterface {
+	// k.chain = chain
+	return k
+}
+func (k *kkModel) SetTopics(topics []string) KInterface {
+	k.topics = topics
+	return k
+}
+func (k *kkModel) SetKeys(keys []string) KInterface {
+	// k.keys = keys
+	return k
+}
+
+func (k *kkModel) AddKey(key string, ch chan []byte) KInterface {
+	if k.keys == nil {
+		k.keys = make(map[string]chan []byte)
+	}
+	k.keys[key] = ch
+	return k
+}
+
 func (k *kkModel) SendMsg(topic, data string) error {
 	msg := &sarama.ProducerMessage{}
 	msg.Topic = topic
@@ -75,23 +102,24 @@ func (k *kkModel) ReciveMsg(msgValue chan []byte) {
 	if k.Consumer == nil {
 		fmt.Println("sarama.NewConsumer  k.Consumer==nil:")
 	}
-	ts, err := k.Consumer.Topics()
-	if err != nil {
-		fmt.Println("get topics error")
-	}
-	tss := findAll(ts)
-	fmt.Println("topics", ts, tss)
+	// ts, err := k.Consumer.Topics()
+	// if err != nil {
+	// 	fmt.Println("get topics error")
+	// }
+	// tss := findAll(ts)
+	// fmt.Println("topics", ts, tss)
 	// msgKey := make(chan []byte)
-	for _, to := range tss {
-		fmt.Println("topic", to)
-		partitionList, err := k.Consumer.Partitions(to)
+
+	for _, topic := range k.topics {
+		fmt.Println("topic", topic)
+		partitionList, err := k.Consumer.Partitions(topic)
 
 		if err != nil {
 			fmt.Println("sarama.NewConsumer error:", err)
 		}
 		fmt.Println("partitionList:", partitionList)
 		for partition := range partitionList {
-			pc, err := k.Consumer.ConsumePartition(to, int32(partition), sarama.OffsetNewest)
+			pc, err := k.Consumer.ConsumePartition(topic, int32(partition), sarama.OffsetNewest)
 			if err != nil {
 				fmt.Println("sarama.NewConsumer error:", err)
 				// panic(err)
@@ -103,8 +131,15 @@ func (k *kkModel) ReciveMsg(msgValue chan []byte) {
 			for {
 				select {
 				case msg := <-pc.Messages():
+
+					k.keys[string(msg.Key)] <- msg.Value
+					// switch string(msg.Key) {
+					// case "TX":
+					// 	msgValue <- msg.Value
+
+					// }
+
 					fmt.Printf("msg offset: %d, partition: %d, timestamp: %s, value: %s\n", msg.Offset, msg.Partition, msg.Timestamp.String(), string(msg.Value))
-					msgValue <- msg.Value
 				case err := <-pc.Errors():
 					fmt.Printf("err :%s\n", err.Error())
 				}
@@ -131,12 +166,12 @@ func (k *kkModel) Close() {
 func findAll(strs []string) []string {
 	s := []string{}
 	for _, str := range strs {
-		// if strings.HasPrefix(str, "VCT") {
-		// 	s = append(s, str)
-		// }
-		if str == "VCT_TX" {
+		if strings.HasPrefix(str, "VCT") {
 			s = append(s, str)
 		}
+		// if str == "VCT_TX" {
+		// 	s = append(s, str)
+		// }
 	}
 	return s
 
