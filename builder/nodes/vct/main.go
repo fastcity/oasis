@@ -1,7 +1,8 @@
 package main
 
 import (
-	gchain "century/oasis/builder/nodes/vct/util/chain"
+	"century/oasis/builder/nodes/util"
+	api "century/oasis/builder/nodes/vct/api/chain"
 	"century/oasis/builder/nodes/vct/util/comm"
 	"century/oasis/builder/nodes/vct/util/dbs"
 	"century/oasis/builder/nodes/vct/util/dbs/models"
@@ -32,8 +33,8 @@ var (
 	json               = jsoniter.ConfigCompatibleWithStandardLibrary
 	db                 dbs.MongoI
 	currentBlockNumber = 0
-	chainConf          gchain.ChainApi
-	kModel             comm.KInterface
+	chainConf          api.ChainApi
+	kafka              comm.KInterface
 	assign             = "TOKEN.ASSIGN"
 	commondb           = "dynasty"
 	chaindb            = "vct"
@@ -54,21 +55,38 @@ func main() {
 	flag.Parse()
 
 	// viper.SetConfigFile("")
-	gopath := os.Getenv("GOPATH")
+	beforeStart()
 
-	for _, p := range filepath.SplitList(gopath) {
-		path := filepath.Join(p, "src/century/oasis/builder/config", strings.ToLower(env), "nodes")
-		// viper.AddConfigPath(path)
-		InitViper(strings.ToLower(chain), strings.ToLower(chain), path)
-	}
+	// go loopReadAndPaser()
 
+	util.InitKa()
+
+	// defer kafka.Close()
+	defer db.Close()
+
+	// initRouter()
+}
+
+func beforeStart() {
+
+	initConf()
+	// initKafka()
+	initDB()
+
+}
+
+func initConf() {
 	confirmedNumber = viper.GetInt("chain.confirmedNumber")
 
-	go loopReadAndPaser()
+	defaultConf := filepath.Join("../../config/", strings.ToLower(env), "nodes")
+	gopath := os.Getenv("GOPATH")
+	pathConf := []string{defaultConf, "."}
+	for _, p := range filepath.SplitList(gopath) {
+		path := filepath.Join(p, "src/century/oasis/builder/config", strings.ToLower(env), "nodes")
+		pathConf = append(pathConf, path)
+	}
 
-	initRouter(nodeURL)
-	initKafka()
-	initDB()
+	InitViper(strings.ToLower(chain), strings.ToLower(chain), pathConf)
 
 }
 
@@ -78,27 +96,26 @@ func initDB() {
 	if err != nil {
 		fmt.Println("connect mongo error", err)
 	}
-	defer db.Close()
 
 	commondb = viper.GetString("chain.commondb")
 	chaindb = viper.GetString("chain.chaindb")
 }
 
 func initKafka() {
-	kModel = comm.NewConsumer(viper.GetStringSlice("kafka.service"))
-	kModel.SetTopics(viper.GetStringSlice("kafka.topics"))
+	kafka = comm.NewConsumer(viper.GetStringSlice("kafka.service"))
+	kafka.SetTopics(viper.GetStringSlice("kafka.topics"))
 
-	// if kModel.Consumer == nil {
+	// if kafka.Consumer == nil {
 	// 	fmt.Println("init kafka fail-------")
 	// }
-	defer kModel.Close()
-	// kModel.SetTopics(viper.GetStringSlice("kafka.topics"))
+
+	// kafka.SetTopics(viper.GetStringSlice("kafka.topics"))
 }
 
 func initRouter() {
 
-	api := fmt.Sprintf("%s://%s:%s", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
-	chainConf = gchain.NewChainAPi(api)
+	urlChain := fmt.Sprintf("%s://%s:%s", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
+	chainConf = api.NewChainAPi(urlChain)
 
 	// // 允许来自所有域名请求
 	// r.Header.Add("Access-Control-Allow-Origin", "*")
@@ -114,6 +131,9 @@ func initRouter() {
 	http.HandleFunc("/api/v1/getBalance", getBalance)
 	http.HandleFunc("/api/v1/history", getHistory)
 
+	url := fmt.Sprintf("%s:%s", viper.GetString("api.host"), viper.GetString("api.port"))
+
+	fmt.Println("listen api:", url, "........")
 	err := http.ListenAndServe(url, nil)
 	if err != nil {
 		fmt.Println("http listen failed.", err)
@@ -495,7 +515,7 @@ func getHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 //InitViper we can set viper which fabric peer is used
-func InitViper(envprefix string, filename string, configPath ...string) error {
+func InitViper(envprefix string, filename string, configPath []string) error {
 	fmt.Println("envprefix", envprefix, "filename", filename, "configPath", configPath)
 	viper.SetEnvPrefix(envprefix)
 	viper.AutomaticEnv()
@@ -514,7 +534,7 @@ func InitViper(envprefix string, filename string, configPath ...string) error {
 func loopReadAndPaser() {
 	msg := make(chan []byte)
 	go func() {
-		kModel.ReciveMsg(msg)
+		kafka.ReciveMsg(msg)
 	}()
 
 	for {
@@ -528,7 +548,7 @@ func loopReadAndPaser() {
 		}
 	}
 
-	// kModel.ReciveMsg()
+	// kafka.ReciveMsg()
 }
 
 func paserTx(msg []byte) []models.TransferFromChain {
