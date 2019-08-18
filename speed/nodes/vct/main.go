@@ -30,7 +30,7 @@ var (
 	db                 dbs.MongoI
 	currentBlockNumber = 0
 	chainConf          gchain.ChainApi
-	kModel             comm.KInterface
+	kaModel            comm.KInterface
 	assign             = "TOKEN.ASSIGN"
 )
 
@@ -66,8 +66,8 @@ func main() {
 
 	api := fmt.Sprintf("%s://%s:%s", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
 	chainConf = gchain.NewChainAPi(api)
-	kModel = comm.NewProducer(viper.GetStringSlice("kafka.service"))
-	defer kModel.Close()
+	kaModel = comm.NewProducer(viper.GetStringSlice("kafka.service"))
+	defer kaModel.Close()
 	loopReadAndPaser()
 
 }
@@ -154,6 +154,7 @@ func getBlockInfo(number int64) []byte {
 	b, err := chainConf.GetBlockInfo(number)
 
 	if err != nil {
+		fmt.Println("getBlockInfo err", number, err)
 		return nil
 	}
 	return b
@@ -170,7 +171,7 @@ func readAndParseBlock(number int64) {
 	err := json.Unmarshal(blockInfos, b)
 	if err != nil {
 		// return -1, err
-		fmt.Println("json.Unmarshal(blockInfo error", err)
+		fmt.Println("!!!!!!! --------json.Unmarshal(blockInfo error", err)
 	}
 	// fmt.Println("---------------json.Unmarshal ", b)
 
@@ -179,7 +180,7 @@ func readAndParseBlock(number int64) {
 		fmt.Println("jsonparser.GetString error", err)
 	}
 	he, _ := strconv.Atoi(h)
-	fmt.Println("---------------jsonparser. Height", he)
+	fmt.Println("-----jsonparser. Height", he)
 
 	if b.Result.Height != "" {
 
@@ -209,10 +210,10 @@ func readAndParseBlock(number int64) {
 				}, "result", "Transactions", "Detail")
 
 			} else {
-				fmt.Println("item.Detail  not batch", item.Detail)
+				fmt.Println("-------------item.Detail  not batch", item.Detail)
 				txs.From = item.Detail.From
 				txs.To = item.Detail.To
-				txs.Value = item.Detail.Amount
+				txs.Value = item.Detail.Amount.String()
 				txs.TokenKey = item.Detail.Token
 			}
 		}
@@ -244,7 +245,7 @@ func readAndParseBlock(number int64) {
 
 		db.GetCollection("vct", "transactions").FindOneAndUpdate(context.Background(), bson.M{"txid": b.Result.Txid}, bson.M{"$set": txs}, op)
 
-		kModel.SendMsg("VCT_TX", []byte(h))
+		kaModel.SendMsg("TX", "VCT_TX", []byte(h))
 	}
 
 	// 			/**

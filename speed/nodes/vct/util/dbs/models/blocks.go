@@ -1,5 +1,7 @@
 package models
 
+import "math/big"
+
 type Blocks struct {
 	Height    string     `json:"height"`
 	Hash      string     `json:"hash"`
@@ -37,10 +39,10 @@ type TxEvents struct {
 }
 
 type Detail struct {
-	Amount string `json:"amount"`
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Token  string `json:"token"`
+	Amount *big.Int `json:"amount"`
+	From   string   `json:"from"`
+	To     string   `json:"to"`
+	Token  string   `json:"token"`
 
 	//   Detail: {
 	// 	"amount": "400000",

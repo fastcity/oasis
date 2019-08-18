@@ -31,7 +31,7 @@ type TransferFromChain struct {
 	CreatedAt int64 `bson:"createdAt"`
 	UpdatedAt int64 `bson:"updatedAt"`
 
-	OnChain bool   `bson:"-"`
+	OnChain bool   `bson:"onChain"`
 	Log     string `bson:"-"`
 
 	// createdAt: { type: Number, default: Date.now },

@@ -12,15 +12,17 @@ api:
 
 db:
     addr: "127.0.0.1:27017"
-    commondb: "dynasty"
-    chaindb: "vct"
+    
 
 kafka:
     service:
         - "127.0.0.1:9092"
     topics:
         - VCT_TX
-    
+    keys:
+        - TX
 
 chain:
     confirmedNumber: 0
+    commondb: "dynasty"
+    chaindb: "vct"

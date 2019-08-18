@@ -16,7 +16,7 @@ type kkModel struct {
 }
 
 type KInterface interface {
-	SendMsg(string, []byte) error
+	SendMsg(string, string, []byte) error
 	ReciveMsg() chan []byte
 	Close()
 }
@@ -72,10 +72,27 @@ func NewConsumer(Addrs []string) KInterface {
 	return m
 }
 
-func (k *kkModel) SendMsg(topic string, data []byte) error {
-	msg := &sarama.ProducerMessage{}
-	msg.Topic = topic
-	msg.Value = sarama.ByteEncoder(data)
+// func (k *kkModel) SendMsg(topic string, data []byte) error {
+// 	msg := &sarama.ProducerMessage{}
+// 	msg.Topic = topic
+// 	msg.Value = sarama.ByteEncoder(data)
+
+// 	// defer client.Close()
+// 	pid, offset, err := k.Producer.SendMessage(msg)
+
+// 	if err != nil {
+// 		return err
+// 	}
+// 	fmt.Printf("分区ID:%v, offset:%v \n", pid, offset)
+// 	return nil
+// }
+
+func (k *kkModel) SendMsg(key, topic string, data []byte) error {
+	msg := &sarama.ProducerMessage{
+		Topic: topic,
+		Key:   sarama.StringEncoder(key),
+		Value: sarama.ByteEncoder(data),
+	}
 
 	// defer client.Close()
 	pid, offset, err := k.Producer.SendMessage(msg)

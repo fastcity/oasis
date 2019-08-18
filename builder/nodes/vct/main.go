@@ -3,7 +3,6 @@ package main
 import (
 	"century/oasis/builder/nodes/util"
 	api "century/oasis/builder/nodes/vct/api/chain"
-	"century/oasis/builder/nodes/vct/util/comm"
 	"century/oasis/builder/nodes/vct/util/dbs"
 	"century/oasis/builder/nodes/vct/util/dbs/models"
 	"context"
@@ -34,7 +33,7 @@ var (
 	db                 dbs.MongoI
 	currentBlockNumber = 0
 	chainConf          api.ChainApi
-	kafka              comm.KInterface
+	kafka              util.KaInterface
 	assign             = "TOKEN.ASSIGN"
 	commondb           = "dynasty"
 	chaindb            = "vct"
@@ -57,20 +56,20 @@ func main() {
 	// viper.SetConfigFile("")
 	beforeStart()
 
-	// go loopReadAndPaser()
+	go loopReadAndPaser()
 
-	util.InitKa()
+	// util.InitKa()
 
-	// defer kafka.Close()
+	defer kafka.Close()
 	defer db.Close()
 
-	// initRouter()
+	initRouter()
 }
 
 func beforeStart() {
 
 	initConf()
-	// initKafka()
+	initKafka()
 	initDB()
 
 }
@@ -102,9 +101,9 @@ func initDB() {
 }
 
 func initKafka() {
-	kafka = comm.NewConsumer(viper.GetStringSlice("kafka.service"))
+	kafka = util.NewConsumer(viper.GetStringSlice("kafka.service"))
 	kafka.SetTopics(viper.GetStringSlice("kafka.topics"))
-
+	kafka.SetKeys(viper.GetStringSlice("kafka.keys"))
 	// if kafka.Consumer == nil {
 	// 	fmt.Println("init kafka fail-------")
 	// }
@@ -533,6 +532,7 @@ func InitViper(envprefix string, filename string, configPath []string) error {
 
 func loopReadAndPaser() {
 	msg := make(chan []byte)
+
 	go func() {
 		kafka.ReciveMsg(msg)
 	}()
@@ -540,7 +540,14 @@ func loopReadAndPaser() {
 	for {
 		select {
 
-		case m := <-msg:
+		// case m := <-msg:
+		// 	tfcs := paserTx(m)
+		// 	for _, tfc := range tfcs {
+		// 		responseNewTx(tfc)
+		// 	}
+		// }
+		case m := <-kafka.GetKeyMsg("TX"):
+
 			tfcs := paserTx(m)
 			for _, tfc := range tfcs {
 				responseNewTx(tfc)
@@ -589,6 +596,7 @@ func paserTx(msg []byte) []models.TransferFromChain {
 				tfc.TokenKey = tx.TokenKey
 				tfc.Coin = "VCT_TOKEN"
 			}
+			tfc.OnChain = true
 
 		} else {
 			tfc.Log = tx.Log
@@ -599,7 +607,7 @@ func paserTx(msg []byte) []models.TransferFromChain {
 }
 
 func responseNewTx(tfc models.TransferFromChain) {
-
+	fmt.Println("responseNewTx", tfc)
 	// dbname := strings.ToLower(tfc.Chain)
 	if tfc.OnChain {
 		newTranferFromChain(tfc)
@@ -643,16 +651,6 @@ func setSendTransactionTxid(requestID, txid string) {
 	tcdecode := models.TransferToChain{}
 	tc.Decode(&tcdecode)
 
-	// // 构造消息
-	// const { _account } = transfer
-	// const notifyData = {
-	// 	status: 'SUBMIT_TRANSACTION_TO_CHAIN',
-	// 	description: 'submit transfer transaction to chain',
-	// 	requestId: mid,
-	// 	tfcId: tc._id,
-	// 	txid,
-	// }
-	// await this.sendNotify('TRANSFER_ACTION', notifyData, _account)
 	notifyData := map[string]string{
 		"status":    "SUBMIT_TRANSACTION_TO_CHAIN",
 		"requestId": requestID,
@@ -711,6 +709,11 @@ func newTranferFromChain(tfc models.TransferFromChain) {
 	where := bson.M{"txid": tx.Txid}
 	ttcResult := db.GetCollection(chaindb, "transferTochains").FindOne(ctx, where)
 
+	if ttcResult.Err() != nil && ttcResult.Err() != mongo.ErrNoDocuments {
+		fmt.Println(">>>>>>>>>>>>>ttcResult", ttcResult.Err())
+		return
+	}
+
 	var updateStr bson.M
 	if ttcResult != nil && ttcResult.Err() == nil {
 		ttc := models.TransferToChain{}
@@ -727,9 +730,7 @@ func newTranferFromChain(tfc models.TransferFromChain) {
 
 		addSubscribesHandle(ttc.From, ttc.ID.Hex())
 	}
-	if ttcResult.Err() != nil && ttcResult.Err() != mongo.ErrNoDocuments {
-		fmt.Println("ttcResult", ttcResult.Err())
-	}
+
 	if tx.ID.IsZero() {
 		tx.ID = primitive.NewObjectID()
 	}
@@ -739,16 +740,15 @@ func newTranferFromChain(tfc models.TransferFromChain) {
 
 	if confirmedNumber == 0 {
 		db.GetCollection(chaindb, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
-		// TODO: 查询 订阅表
-		onchain(tx.From, "OUT", tx)
-		onchain(tx.To, "IN", tx)
+		// // TODO: 查询 订阅表
+		// onchain(tx.From, "OUT", tx)
+		// onchain(tx.To, "IN", tx)
 
 	} else {
-		db.GetCollection(chaindb, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
-		onchain(tx.From, "OUT", tx)
-		onchain(tx.To, "IN", tx)
-
+		db.GetCollection(chaindb, "transferconfirmings").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
 	}
+	onchain(tx.From, "OUT", tx)
+	onchain(tx.To, "IN", tx)
 
 }
 
@@ -931,7 +931,10 @@ func addSubscribesHandle(address, account string) {
 
 func getSubscribeIds(address string) []string {
 
-	cursor, _ := db.GetCollection(commondb, "subscribes").Find(context.Background(), bson.M{"addresses": address})
+	cursor, err := db.GetCollection(commondb, "subscribes").Find(context.Background(), bson.M{"addresses": address})
+	if err != nil {
+		fmt.Println("getSubscribeIds error", err)
+	}
 	accountID := []string{}
 	defer cursor.Close(context.Background())
 	if cursor.Next(context.Background()) {
