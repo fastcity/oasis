@@ -12,6 +12,8 @@ func main() {
 		beego.BConfig.WebConfig.StaticDir["/swagger"] = "swagger"
 	}
 	// beego.LoadAppConfig("ini", "conf/app2.conf")
+
+	beego.SetLogger("file", `{"filename":"logs/api.log"}`)
 	beego.Run()
 
 	// beego.RunWithMiddleWares("127.0.0.1:8080", midd)

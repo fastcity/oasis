@@ -32,7 +32,8 @@ func (balance *BalanceController) Get() {
 
 	req := httplib.Get(url)
 	b, _ := req.Bytes()
-	fmt.Println("url", url, "ba", b)
+
+	beego.Debug("url", url, "ba", b)
 	var resp models.CommResp
 
 	err := req.ToJSON(&resp)

@@ -3,8 +3,7 @@ package main
 import (
 	"century/oasis/builder/nodes/util"
 	api "century/oasis/builder/nodes/vct/api/chain"
-	"century/oasis/builder/nodes/vct/util/dbs"
-	"century/oasis/builder/nodes/vct/util/dbs/models"
+	"century/oasis/builder/nodes/vct/models"
 	"context"
 	"flag"
 	"fmt"
@@ -24,13 +23,14 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.uber.org/zap"
 )
 
 var (
 	chain              string
 	env                string
 	json               = jsoniter.ConfigCompatibleWithStandardLibrary
-	db                 dbs.MongoI
+	db                 util.MongoI
 	currentBlockNumber = 0
 	chainConf          api.ChainApi
 	kafka              util.KaInterface
@@ -38,6 +38,7 @@ var (
 	commondb           = "dynasty"
 	chaindb            = "vct"
 	confirmedNumber    = 0
+	logger             *zap.SugaredLogger
 )
 
 // Result 返回结果
@@ -53,6 +54,7 @@ func main() {
 	flag.StringVar(&env, "env", "dev", "env")
 	flag.Parse()
 
+	logger = util.NewLogger()
 	// viper.SetConfigFile("")
 	beforeStart()
 
@@ -90,7 +92,7 @@ func initConf() {
 }
 
 func initDB() {
-	db = dbs.New(viper.GetString("db.addr"))
+	db = util.NewDBs(viper.GetString("db.addr"))
 	err := db.GetConn()
 	if err != nil {
 		fmt.Println("connect mongo error", err)

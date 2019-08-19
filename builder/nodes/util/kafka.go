@@ -111,17 +111,17 @@ func (k *kaModel) SendMsg(key, topic, data string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("分区ID:%v, offset:%v \n", pid, offset)
+	logger.Debugf("分区ID:%v, offset:%v \n", pid, offset)
 	return nil
 }
 
 func (k *kaModel) ReciveMsg(msgValue chan []byte) {
 	if k.consumer == nil {
-		fmt.Println("sarama.NewConsumer  k.Consumer==nil:")
+		logger.Error("sarama.NewConsumer  k.Consumer==nil:")
 	}
 	kaTopics, err := k.consumer.Topics()
 	if err != nil {
-		fmt.Println("get topics error")
+		logger.Error("get topics error")
 	}
 
 	k.kaTopics = kaTopics
@@ -129,10 +129,10 @@ func (k *kaModel) ReciveMsg(msgValue chan []byte) {
 	// msgKey := make(chan []byte)
 
 	for _, topic := range k.topics {
-		fmt.Println("topic", topic)
+		logger.Debug("topic", topic)
 
 		if !k.topicExist(topic) {
-			fmt.Println("topic is not exist on kafka", topic)
+			logger.Error("topic is not exist on kafka", topic)
 			continue
 		}
 		//  一个 topic 一个 协程
@@ -140,13 +140,13 @@ func (k *kaModel) ReciveMsg(msgValue chan []byte) {
 		partitionList, err := k.consumer.Partitions(topic)
 
 		if err != nil {
-			fmt.Println(" get topic Partitions error:", err)
+			logger.Error(" get topic Partitions error:", err)
 		}
 		fmt.Println("partitionList:", partitionList)
 		for partition := range partitionList {
 			pc, err := k.consumer.ConsumePartition(topic, int32(partition), sarama.OffsetNewest)
 			if err != nil {
-				fmt.Println("sarama ConsumePartition error:", err)
+				logger.Error("sarama ConsumePartition error:", err)
 			}
 
 			defer pc.AsyncClose()
@@ -162,9 +162,9 @@ func (k *kaModel) ReciveMsg(msgValue chan []byte) {
 
 					// }
 
-					fmt.Printf("msg offset: %d, partition: %d, timestamp: %s,key:%s, value: %s\n", msg.Offset, msg.Partition, msg.Timestamp.String(), string(msg.Key), string(msg.Value))
+					logger.Debugf("msg offset: %d, partition: %d, timestamp: %s,key:%s, value: %s\n", msg.Offset, msg.Partition, msg.Timestamp.String(), string(msg.Key), string(msg.Value))
 				case err := <-pc.Errors():
-					fmt.Printf("err :%s\n", err.Error())
+					logger.Errorf("err :%s\n", err.Error())
 				}
 			}
 		}

@@ -16,3 +16,6 @@ db:
 kafka:
     service:
         - "127.0.0.1:9092"
+
+chain:
+    chaindb: "vct"

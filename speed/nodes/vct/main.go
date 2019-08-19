@@ -1,10 +1,9 @@
 package main
 
 import (
-	"century/oasis/speed/nodes/vct/util/chain"
-	"century/oasis/speed/nodes/vct/util/comm"
-	"century/oasis/speed/nodes/vct/util/dbs"
-	"century/oasis/speed/nodes/vct/util/dbs/models"
+	"century/oasis/speed/nodes/vct/models"
+	gchain "century/oasis/speed/nodes/vct/util/chain"
+	"century/oasis/speed/util"
 	"context"
 	"flag"
 	"fmt"
@@ -16,22 +15,25 @@ import (
 	"time"
 
 	"github.com/buger/jsonparser"
-	"github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.uber.org/zap"
 	// "century/oasis/speed/vct/db"
 )
 
 var (
-	chain              string
-	env                string
-	json               = jsoniter.ConfigCompatibleWithStandardLibrary
-	db                 dbs.MongoI
-	currentBlockNumber = 0
-	chainConf          gchain.ChainApi
-	kaModel            comm.KInterface
-	assign             = "TOKEN.ASSIGN"
+	chain     string
+	env       string
+	json      = jsoniter.ConfigCompatibleWithStandardLibrary
+	db        util.MongoI
+	chainConf gchain.ChainApi
+	kafka     util.KaInterface
+	assign    = "TOKEN.ASSIGN"
+	chaindb   = "vct"
+
+	logger *zap.SugaredLogger
 )
 
 // Result 返回结果
@@ -42,33 +44,63 @@ type Result struct {
 
 func main() {
 
-	flag.StringVar(&chain, "chain", "VCT", "chain")
+	flag.StringVar(&chain, "chain", chaindb, "chain")
 	flag.StringVar(&env, "env", "dev", "env")
 	flag.Parse()
 
-	// viper.SetConfigFile("")
+	logger = util.NewLogger()
+	beforeStart()
+	defer kafka.Close()
+	defer db.Close()
+	loopReadAndPaser()
+
+}
+
+func beforeStart() {
+
+	initConf()
+	initKafka()
+	initDB()
+	initNodeAPI()
+
+}
+
+func initConf() {
+	// confirmedNumber = viper.GetInt("chain.confirmedNumber")
+
+	defaultConf := filepath.Join("../../config/", strings.ToLower(env), "nodes")
 	gopath := os.Getenv("GOPATH")
-
+	pathConf := []string{defaultConf, "."}
 	for _, p := range filepath.SplitList(gopath) {
-		path := filepath.Join(p, "src/century/oasis/speed/config", strings.ToLower(env), "nodes")
-		// viper.AddConfigPath(path)
-		InitViper(strings.ToLower(chain), strings.ToLower(chain), path)
+		path := filepath.Join(p, "src/century/oasis/builder/config", strings.ToLower(env), "nodes")
+		pathConf = append(pathConf, path)
 	}
-	// host := viper.GetString("service.host")
-	// port := viper.GetString("service.port")
-	// router(host + ":" + port)
 
-	db = dbs.New(viper.GetString("db.addr"))
+	InitViper(strings.ToLower(chain), strings.ToLower(chain), pathConf)
+
+}
+
+func initDB() {
+	db = util.NewDBs(viper.GetString("db.addr"))
 	err := db.GetConn()
 	if err != nil {
 		fmt.Println("connect mongo error", err)
 	}
+	chaindb = viper.GetString("chain.chaindb")
+}
 
+func initKafka() {
+
+	kafka = util.NewProducer(viper.GetStringSlice("kafka.service"))
+	// kafka = util.NewConsumer(viper.GetStringSlice("kafka.service"))
+	// kafka.SetTopics(viper.GetStringSlice("kafka.topics"))
+	// kafka.SetKeys(viper.GetStringSlice("kafka.keys"))
+
+}
+
+func initNodeAPI() {
 	api := fmt.Sprintf("%s://%s:%s", viper.GetString("node.protocal"), viper.GetString("node.host"), viper.GetString("node.port"))
 	chainConf = gchain.NewChainAPi(api)
-	kaModel = comm.NewProducer(viper.GetStringSlice("kafka.service"))
-	defer kaModel.Close()
-	loopReadAndPaser()
 
 }
 
@@ -76,7 +108,8 @@ func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 
 	h, err := chainConf.GetBlockHeight()
 	if err != nil {
-		fmt.Println("--------------err", err)
+		// fmt.Println("--------------err", err)
+		logger.Error("--------------err", err)
 	}
 
 	res := &Result{
@@ -92,8 +125,9 @@ func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 }
 
 //InitViper we can set viper which fabric peer is used
-func InitViper(envprefix string, filename string, configPath ...string) error {
-	fmt.Println("envprefix", envprefix, "filename", filename, "configPath", configPath)
+func InitViper(envprefix string, filename string, configPath []string) error {
+	logger.Info("envprefix:", envprefix, ",filename:", filename, ",configPath:", configPath)
+
 	viper.SetEnvPrefix(envprefix)
 	viper.AutomaticEnv()
 	replacer := strings.NewReplacer(".", "_")
@@ -110,39 +144,28 @@ func InitViper(envprefix string, filename string, configPath ...string) error {
 
 func initLatestBlockNumber() int64 {
 
-	collection := db.GetCollection("vct", "infos")
+	var result models.Info
 
-	result := &models.Info{}
+	ctx := context.Background()
 
-	filter := bson.M{}
-
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-	err := collection.FindOne(ctx, filter).Decode(&result)
+	err := db.GetCollection(chaindb, "infos").FindOne(ctx, bson.M{}).Decode(&result)
 	if err != nil {
 		// log.Fatal(err)
-		fmt.Println(" collection.FindOne err", err)
+		logger.Error(" collection.FindOne err", err)
 	}
 
-	fmt.Println("initLatestBlockNumber", result)
+	logger.Debug("initLatestBlockNumber", result)
 	if result.Height > 0 {
 		return result.Height + 1
 	}
 	return 0
 }
 
-// func containsKey(doc bson.Raw, key ...string) bool {
-// 	_, err := doc.LookupErr(key...)
-// 	if err != nil {
-// 		return false
-// 	}
-// 	return true
-// }
-
 func isNewBlockAvalible(number int64) bool {
 
 	block, err := chainConf.GetBlockHeight()
 	if err != nil {
-		fmt.Println("--------------err", err)
+		logger.Error("--------------err", err)
 		block = -1
 	}
 	return block > number
@@ -152,9 +175,8 @@ func isNewBlockAvalible(number int64) bool {
 func getBlockInfo(number int64) []byte {
 
 	b, err := chainConf.GetBlockInfo(number)
-
 	if err != nil {
-		fmt.Println("getBlockInfo err", number, err)
+		logger.Error("getBlockInfo err", number, err)
 		return nil
 	}
 	return b
@@ -171,16 +193,16 @@ func readAndParseBlock(number int64) {
 	err := json.Unmarshal(blockInfos, b)
 	if err != nil {
 		// return -1, err
-		fmt.Println("!!!!!!! --------json.Unmarshal(blockInfo error", err)
+		logger.Error("!!!!!!! --------json.Unmarshal blockInfo error", err)
 	}
 	// fmt.Println("---------------json.Unmarshal ", b)
 
 	h, err := jsonparser.GetString(blockInfos, "result", "Height")
 	if err != nil {
-		fmt.Println("jsonparser.GetString error", err)
+		logger.Error("jsonparser.GetString error", err)
 	}
 	he, _ := strconv.Atoi(h)
-	fmt.Println("-----jsonparser. Height", he)
+	logger.Debug("-----jsonparser. Height", he)
 
 	if b.Result.Height != "" {
 
@@ -198,7 +220,7 @@ func readAndParseBlock(number int64) {
 				jsonparser.ArrayEach(blockInfos, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
 					m, err := jsonparser.GetString(value, "Method")
 					if err != nil {
-						fmt.Println("jsonparser.GetString Method error", err)
+						logger.Error("jsonparser.GetString Method error", err)
 					}
 					if m == assign {
 						to, _ := jsonparser.GetString(value, "Method", "to")
@@ -210,7 +232,7 @@ func readAndParseBlock(number int64) {
 				}, "result", "Transactions", "Detail")
 
 			} else {
-				fmt.Println("-------------item.Detail  not batch", item.Detail)
+				logger.Debug("-------------item.Detail  not batch", item.Detail)
 				txs.From = item.Detail.From
 				txs.To = item.Detail.To
 				txs.Value = item.Detail.Amount.String()
@@ -227,25 +249,15 @@ func readAndParseBlock(number int64) {
 		}
 
 		op := options.FindOneAndUpdate().SetUpsert(true)
-		// rs := db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.M{}, bson.D{{"$set", bson.M{"height": h}}}, op)
-		rs := db.GetCollection("vct", "infos").FindOneAndUpdate(context.Background(), bson.M{}, bson.M{"$set": bson.M{"height": he}}, op)
+		// rs := db.GetCollection(chaindb, "infos").FindOneAndUpdate(context.Background(), bson.M{}, bson.D{{"$set", bson.M{"height": h}}}, op)
+		rs := db.GetCollection(chaindb, "infos").FindOneAndUpdate(context.Background(), bson.M{}, bson.M{"$set": bson.M{"height": he}}, op)
 		if rs.Err() != nil {
-			fmt.Println("FindOneAndUpdate err", rs.Err())
+			logger.Error("FindOneAndUpdate err", rs.Err())
 		}
 
-		// docs := bson.M{
-		// 	"height": b.Result.Height,
-		// 	"hash":   b.Result.Hash,
-		// 	"time":   b.Result.TimeStamp,
-		// }
-		// _, err = db.GetCollection("vct", "blocks").FindOneAndUpdate(context.Background(), bson.M{}, bson.M{"$set": docs}, op)
-		// if err != nil {
-		// 	fmt.Println("insert one err", err)
-		// }
+		db.GetCollection(chaindb, "transactions").FindOneAndUpdate(context.Background(), bson.M{"txid": b.Result.Txid}, bson.M{"$set": txs}, op)
 
-		db.GetCollection("vct", "transactions").FindOneAndUpdate(context.Background(), bson.M{"txid": b.Result.Txid}, bson.M{"$set": txs}, op)
-
-		kaModel.SendMsg("TX", "VCT_TX", []byte(h))
+		kafka.SendMsg("TX", "VCT_TX", h)
 	}
 
 	// 			/**
@@ -287,10 +299,9 @@ func readAndParseBlock(number int64) {
 
 func loopReadAndPaser() {
 	dbHeight := initLatestBlockNumber()
-	b := make(chan int)
 	for {
 		select {
-		case <-b:
+
 		case <-time.After(time.Second * 1):
 			if isNewBlockAvalible(dbHeight) {
 				// 解析区块及事务

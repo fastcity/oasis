@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/astaxie/beego"
+
 	ct "context"
 
 	"github.com/astaxie/beego/context"
@@ -55,6 +57,7 @@ func sign(ctx *context.Context) string {
 	}
 	data = strings.TrimRight(data, "&")
 	fmt.Println("sign data", data)
+	beego.Debug("sign data", data)
 
 	h := md5.New()
 	h.Write([]byte(data))
@@ -63,7 +66,8 @@ func sign(ctx *context.Context) string {
 	digest := hex.EncodeToString(cipherStr)
 
 	// ctx.Set("signature", digest)
-	fmt.Printf("%s\n", digest) // 输出加密结果
+	// fmt.Printf("%s\n", digest) // 输出加密结果
+	beego.Debug(digest)
 
 	return strings.ToLower(digest)
 }
