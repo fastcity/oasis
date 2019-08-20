@@ -150,7 +150,6 @@ func initLatestBlockNumber() int64 {
 
 	err := db.GetCollection(chaindb, "infos").FindOne(ctx, bson.M{}).Decode(&result)
 	if err != nil {
-		// log.Fatal(err)
 		logger.Error(" collection.FindOne err", err)
 	}
 
@@ -298,15 +297,15 @@ func readAndParseBlock(number int64) {
 }
 
 func loopReadAndPaser() {
-	dbHeight := initLatestBlockNumber()
 	for {
+		dbHeight := initLatestBlockNumber()
 		select {
 
 		case <-time.After(time.Second * 1):
 			if isNewBlockAvalible(dbHeight) {
 				// 解析区块及事务
 				readAndParseBlock(dbHeight)
-				dbHeight++
+				// dbHeight++
 			}
 		}
 	}

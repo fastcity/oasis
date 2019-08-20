@@ -139,7 +139,7 @@ func (tf *TransferController) CreateTransferTxData() {
 func (tf *TransferController) SubmitTx() {
 	defer tf.ServeJSON()
 
-	d := tf.Data["db"].(db.MongoInterface)
+	// d := tf.Data["db"].(db.MongoInterface)
 
 	// var transfer models.Transfer
 	// json.Unmarshal(tf.Ctx.Input.RequestBody, &transfer) // 不好使 传 json TODO: 带研究

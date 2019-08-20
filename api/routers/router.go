@@ -17,7 +17,7 @@ import (
 
 func init() {
 
-	db := db.GetDB()
+	dbs := db.GetDB()
 
 	ns := beego.NewNamespace("/v1",
 		beego.NSNamespace("/object",
@@ -33,14 +33,8 @@ func init() {
 	)
 	beego.AddNamespace(ns)
 
-	ft := &controllers.TransferController{DB: db}
-	// beego.Router("/", &controllers.MainController{})
-	// beego.Router("api/v1/", &controllers.TransferController{}, "post:CreateTransferTxData")
-	// beego.Router("api/v1/balance", &controllers.BalanceController{})
-	// beego.Router("api/v1/createTransferTxData", ft, "post:CreateTransferTxData")
-	// beego.Router("api/v1/submitTx", ft, "post:SubmitTx")
-
-	// beego.Router("api/v1/account", &controllers.AccountController{DB: db})
+	ft := &controllers.TransferController{DB: dbs}
+	middle := middleware.NewMiddle(dbs)
 
 	nsAcc := beego.NewNamespace("/api/v1",
 		// beego.NSBefore(middleware.FilterUser),
@@ -50,14 +44,14 @@ func init() {
 
 		beego.NSRouter("/getTxStatus", ft, "get:GetTxStatus"),
 
-		beego.NSRouter("/subscribe", &controllers.AccountController{DB: db}, "post:Subscribe"),
+		beego.NSRouter("/subscribe", &controllers.AccountController{DB: dbs}, "post:Subscribe"),
 
 		beego.NSNamespace("/account",
 			beego.NSInclude(
-				&controllers.AccountController{DB: db},
+				&controllers.AccountController{DB: dbs},
 			),
 		),
 	)
 	beego.AddNamespace(nsAcc)
-	beego.InsertFilter("/*", beego.BeforeRouter, middleware.FilterUser) // TODO:  /api/v1/account 不用过滤 正则
+	beego.InsertFilter("/*", beego.BeforeRouter, middle.Auth()) // TODO:  /api/v1/account 不用过滤 正则
 }
