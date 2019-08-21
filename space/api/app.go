@@ -70,7 +70,8 @@ func (a *App) RedirectGet() {
 	resp, err := http.Get(body)
 	if err != nil {
 		// c.Status(http.StatusServiceUnavailable)
-		a.ctx.JSON(resp.StatusCode, gin.H{"code": 40000, "msg": err.Error()})
+		// fmt.Println("resp.StatusCode", resp.StatusCode, "err", err.Error())
+		a.ctx.JSON(http.StatusServiceUnavailable, gin.H{"code": 40000, "msg": err.Error()})
 		return
 	}
 
@@ -97,7 +98,7 @@ func (a *App) RedirectPsot() {
 	body := strings.NewReader(requestBody)
 	resp, err := http.Post(path, "application/x-www-form-urlencoded", body) //TODO: 原始type
 	if err != nil {
-		a.ctx.JSON(resp.StatusCode, gin.H{"code": 40000, "msg": err.Error()})
+		a.ctx.JSON(http.StatusServiceUnavailable, gin.H{"code": 40000, "msg": err.Error()})
 		return
 	}
 
@@ -139,7 +140,7 @@ func sortKeys(data map[string][]string) []string {
 
 func getKeys(data map[string][]string) []string {
 	keys := []string{}
-	for k, _ := range data {
+	for k := range data {
 		keys = append(keys, k)
 	}
 	return keys
@@ -164,7 +165,7 @@ func sign(ctx *gin.Context) string {
 		}
 	}
 	data = strings.TrimRight(data, "&")
-	fmt.Println("sign data", data)
+	fmt.Println("-------sign data----------", data)
 	h := md5.New()
 	h.Write([]byte(data))
 	cipherStr := h.Sum(nil)

@@ -42,7 +42,7 @@ func crypto(data map[string][]string) map[string]string {
 }
 func sortData(data map[string]string) []string {
 	keys := []string{}
-	for k, _ := range data {
+	for k := range data {
 		keys = append(keys, k)
 	}
 
@@ -53,7 +53,7 @@ func sortData(data map[string]string) []string {
 
 func sign(ctx *gin.Context) {
 	// form := map[string]string{}
-
+	fmt.Println("sign")
 	ctx.Request.ParseMultipartForm(defaultMaxMemory)
 	body := ctx.Request.Form
 
@@ -87,7 +87,7 @@ func balance(c *gin.Context) {
 }
 
 func any(c *gin.Context) {
-	// fmt.Println("any")
+	fmt.Println("any")
 	// app.RedirectAny(c)
 
 	// if err != nil {
@@ -139,13 +139,17 @@ func setupRouter() *gin.Engine {
 	// 	}
 	// })
 
+	// r.Use(gin.Recovery())
+
 	index := r.Group("/api").Group("/v1")
+	//将分组下的路由包起来，只是为了更加直观，并非必要的
 	{
 		index.Use(sign)
 		index.GET("/balance", balance)
 		index.POST("/createTransferTxData", createTransferTxData)
-		// index.Any("/balances", any)
-		index.Any("", any)
+		index.Any("/", any) //TODO: 有的话就路由。没有的就进any 。咋写?
+
+		// index.Use(sign)
 	}
 
 	// r.GET("/balance", &controllers.BalanceController{}),
