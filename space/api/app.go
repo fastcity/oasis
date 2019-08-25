@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	echo "github.com/labstack/echo/v4"
 )
 
 const (
@@ -19,7 +20,7 @@ type App struct {
 	baseUrl string
 	apiKey  string
 	secKey  string
-	ctx     *gin.Context
+	ctx     echo.Context
 
 	form map[string]string
 }
@@ -27,11 +28,11 @@ type AppInterface interface {
 	SetBaseUrl(base string) AppInterface
 	SetApikey(apikey string) AppInterface
 	SetSecKey(secKey string) AppInterface
-	SetGinCtx(ctx *gin.Context) AppInterface
+	SetGinCtx(ctx echo.Context) AppInterface
 
 	RedirectGet()
 	RedirectPsot()
-	// RedirectAny()
+	RedirectAny()
 }
 
 func NewApp() AppInterface {
@@ -51,7 +52,7 @@ func (a *App) SetSecKey(secKey string) AppInterface {
 	a.secKey = secKey
 	return a
 }
-func (a *App) SetGinCtx(ctx *gin.Context) AppInterface {
+func (a *App) SetGinCtx(ctx echo.Context) AppInterface {
 	a.ctx = ctx
 	return a
 }
@@ -59,42 +60,31 @@ func (a *App) SetGinCtx(ctx *gin.Context) AppInterface {
 //RedirectGet RedirectGet
 func (a *App) RedirectGet() {
 
-	// path := a.baseUrl + a.ctx.Request.RequestURI
-	// query := a.ctx.Request.URL.RawQuery
+	url := a.baseUrl + a.ctx.Request().RequestURI
 
-	url := a.baseUrl + a.ctx.Request.RequestURI
-	// q := a.ctx.Request.Form
-	// fmt.Println(q)
 	signature := sign(a.ctx)
 	body := url + "&signature=" + signature
 	resp, err := http.Get(body)
 	if err != nil {
 		// c.Status(http.StatusServiceUnavailable)
-		// fmt.Println("resp.StatusCode", resp.StatusCode, "err", err.Error())
 		a.ctx.JSON(http.StatusServiceUnavailable, gin.H{"code": 40000, "msg": err.Error()})
 		return
 	}
 
-	contentLength := resp.ContentLength
+	// contentLength := resp.ContentLength
 	contentType := resp.Header.Get("Content-Type")
-	a.ctx.DataFromReader(http.StatusOK, contentLength, contentType, resp.Body, map[string]string{})
-	// c.Data(http.StatusOK, contentType, respbody)
+
+	a.ctx.Stream(http.StatusOK, contentType, resp.Body)
 }
 
 func (a *App) RedirectPsot() {
 
-	// form := map[string]string{}
+	f := a.ctx.Request().Form
 
-	f := a.ctx.Request.Form
-	fmt.Println("get params body", f)
-	// andQ := strings.Split(body, "&")
-	// for _, q := range andQ {
-	// 	p := strings.Split(q, "=")
-	// 	form[p[0]] = p[1]
-	// }
+	a.ctx.Logger().Debug("get params body", f)
 
-	path := a.baseUrl + a.ctx.Request.URL.Path
-	requestBody := a.ctx.Request.URL.RawQuery
+	path := a.baseUrl + a.ctx.Request().URL.Path
+	requestBody := a.ctx.Request().URL.RawQuery
 	body := strings.NewReader(requestBody)
 	resp, err := http.Post(path, "application/x-www-form-urlencoded", body) //TODO: 原始type
 	if err != nil {
@@ -104,20 +94,19 @@ func (a *App) RedirectPsot() {
 
 	// respbody, err := ioutil.ReadAll(resp.Body)
 
-	contentLength := resp.ContentLength
+	// contentLength := resp.ContentLength
 	contentType := resp.Header.Get("Content-Type")
-	a.ctx.DataFromReader(http.StatusOK, contentLength, contentType, resp.Body, map[string]string{})
-	// return respbody, err
-	// return resp
+	// a.ctx.DataFromReader(http.StatusOK, contentLength, contentType, resp.Body, map[string]string{})
+	a.ctx.Stream(http.StatusOK, contentType, resp.Body)
 }
 
 func (a *App) RedirectAny() {
-	if a.ctx.Request.Method == "GET" {
+	if a.ctx.Request().Method == "GET" {
 		a.RedirectGet()
 		return
 	}
 
-	if a.ctx.Request.Method == "POST" {
+	if a.ctx.Request().Method == "POST" {
 		a.RedirectPsot()
 		return
 	}
@@ -146,11 +135,11 @@ func getKeys(data map[string][]string) []string {
 	return keys
 }
 
-func sign(ctx *gin.Context) string {
+func sign(ctx echo.Context) string {
 	// form := map[string]string{}
 
-	ctx.Request.ParseMultipartForm(defaultMaxMemory)
-	body := ctx.Request.Form
+	ctx.Request().ParseMultipartForm(defaultMaxMemory)
+	body := ctx.Request().Form
 
 	sortKey := sortKeys(body)
 
@@ -166,6 +155,7 @@ func sign(ctx *gin.Context) string {
 	}
 	data = strings.TrimRight(data, "&")
 	fmt.Println("-------sign data----------", data)
+	ctx.Logger().Debug("-------sign data----------", data)
 	h := md5.New()
 	h.Write([]byte(data))
 	cipherStr := h.Sum(nil)

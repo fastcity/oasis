@@ -119,10 +119,21 @@ func (mid *middle) Auth() func(ctx *context.Context) {
 			// 5221ef283de4018031bbde93b1a0aa37
 			si := sign(ctx)
 			signature := ctx.Input.Query("signature")
+
+			if signature == "" {
+				res := map[string]interface{}{
+					"code": 40001,
+					"msg":  "signature empty",
+				}
+				ctx.Output.SetStatus(http.StatusUnauthorized)
+				ctx.Output.JSON(res, false, false)
+				return
+			}
+
 			if strings.Compare(si, strings.ToLower(signature)) != 0 {
 				res := map[string]interface{}{
 					"code": 40001,
-					"msg":  "signature not match,show be" + si + "get" + signature,
+					"msg":  "signature not match,show be:" + si + ";but get:" + signature,
 				}
 				ctx.Output.SetStatus(http.StatusUnauthorized)
 				ctx.Output.JSON(res, false, false)

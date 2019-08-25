@@ -53,5 +53,14 @@ func init() {
 		),
 	)
 	beego.AddNamespace(nsAcc)
+
+	//TODO: spacve 需要有正则路由，示例
+	// beego.Any("/*", func(ctx *bctx.Context) {
+	// 	ctx.Output.SetStatus(http.StatusNotFound)
+	// 	ctx.Output.JSON(map[string]interface{}{
+	// 		"code": 404,
+	// 		"msg":  "unsupported rotuer",
+	// 	}, false, false)
+	// })
 	beego.InsertFilter("/*", beego.BeforeRouter, middle.Auth()) // TODO:  /api/v1/account 不用过滤 正则
 }

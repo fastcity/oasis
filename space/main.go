@@ -1,19 +1,18 @@
 package main
 
 import (
-	"century/oasis/space/api"
-	"crypto/md5"
-	"encoding/hex"
+	"century/space/api"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	echo "github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/spf13/viper"
 )
 
@@ -29,139 +28,120 @@ const (
 	defaultMaxMemory = 32 << 20 // 32 MB
 )
 
-func crypto(data map[string][]string) map[string]string {
-	//
-	form := map[string]string{}
-	for i, v := range data {
-		// TODO: 数组
-		if len(v) == 1 && v[0] != "" {
-			form[i] = v[0]
-		}
-	}
-	return form
-}
-func sortData(data map[string]string) []string {
-	keys := []string{}
-	for k := range data {
-		keys = append(keys, k)
-	}
-
-	sort.Strings(keys)
-	return keys
-
-}
-
-func sign(ctx *gin.Context) {
-	// form := map[string]string{}
-	fmt.Println("sign")
-	ctx.Request.ParseMultipartForm(defaultMaxMemory)
-	body := ctx.Request.Form
-
-	form := crypto(body)
-	sortKey := sortData(form)
-
-	data := ""
-	for _, v := range sortKey {
-		data += v + "=" + form[v] + "&"
-	}
-	data = strings.TrimRight(data, "&")
-
-	h := md5.New()
-	h.Write([]byte(data))
-	cipherStr := h.Sum(nil)
-
-	digest := hex.EncodeToString(cipherStr)
-
-	ctx.Set("signature", digest)
-	fmt.Printf("%s\n", digest) // 输出加密结果
-	ctx.Next()
-}
-
-func createTransferTxData(c *gin.Context) {
+func createTransferTxData(c echo.Context) error {
 	app.SetGinCtx(c).RedirectPsot()
+	return nil
 }
 
-func balance(c *gin.Context) {
+func submitTx(c echo.Context) error {
+	app.SetGinCtx(c).RedirectPsot()
+	return nil
+}
+
+func subscribe(c echo.Context) error {
+	app.SetGinCtx(c).RedirectPsot()
+	return nil
+}
+
+//newaccount
+func newAccount(c echo.Context) error {
+	app.SetGinCtx(c).RedirectPsot()
+	return nil
+}
+
+func setCallBackUrl(c echo.Context) error {
+	app.SetGinCtx(c).RedirectPsot()
+	return nil
+}
+
+func getAccount(c echo.Context) error {
+	fmt.Println("getAccount")
+	app.SetGinCtx(c).RedirectGet()
+	return nil
+}
+
+//getTxStatus
+
+func getTxStatus(c echo.Context) error {
+	fmt.Println("getTxStatus")
+	app.SetGinCtx(c).RedirectGet()
+	return nil
+}
+
+func balance(c echo.Context) error {
 	fmt.Println("balance")
 	app.SetGinCtx(c).RedirectGet()
+	return nil
 }
 
-func any(c *gin.Context) {
+func any(e echo.Context) error {
 	fmt.Println("any")
-	// app.RedirectAny(c)
-
-	// if err != nil {
-	// 	c.JSON(http.StatusOK, gin.H{"code": 40000, "msg": err.Error()})
-	// 	return
-	// }
-	// c.Data(http.StatusOK, "application/json", resp)
-	// c.Writer.Write(resp)
+	app.SetGinCtx(e).RedirectAny()
+	return nil
 }
 
-func setupRouter() *gin.Engine {
-	// Disable Console Color
-	// gin.DisableConsoleColor()
-	r := gin.Default()
-	// r.Use()
+func setupRouter() *echo.Echo {
+	// Echo instance
+	e := echo.New()
 
-	// Ping test
-	r.GET("/ping", func(c *gin.Context) {
-		c.String(http.StatusOK, "pong")
-	})
+	// Middleware
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+	e.Use(middleware.CORS())
 
-	// Get user value
-	r.GET("/user/:name", func(c *gin.Context) {
-		user := c.Params.ByName("name")
-		value, ok := db[user]
-		if ok {
-			c.JSON(http.StatusOK, gin.H{"user": user, "value": value})
-		} else {
-			c.JSON(http.StatusOK, gin.H{"user": user, "status": "no value"})
-		}
-	})
+	// Routes
+	e.GET("/hello", hello)
 
-	// authorized := r.Group("/", gin.BasicAuth(gin.Accounts{
-	// 	"foo":  "bar", // user:foo password:bar
-	// 	"manu": "123", // user:manu password:123
-	// }))
-
-	// authorized.POST("admin", func(c *gin.Context) {
-	// 	user := c.MustGet(gin.AuthUserKey).(string)
-
-	// 	// Parse JSON
-	// 	var json struct {
-	// 		Value string `json:"value" binding:"required"`
-	// 	}
-
-	// 	if c.Bind(&json) == nil {
-	// 		db[user] = json.Value
-	// 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	// 	}
-	// })
-
-	// r.Use(gin.Recovery())
-
-	index := r.Group("/api").Group("/v1")
-	//将分组下的路由包起来，只是为了更加直观，并非必要的
+	index := e.Group("/api").Group("/v1")
 	{
-		index.Use(sign)
+		// index.Use(sign)
 		index.GET("/balance", balance)
 		index.POST("/createTransferTxData", createTransferTxData)
-		index.Any("/", any) //TODO: 有的话就路由。没有的就进any 。咋写?
+		index.POST("/submitTx", submitTx)
+		index.GET("/getTxStatus", getTxStatus)
+		index.GET("/subscribe", subscribe)
+		index.GET("/account", getAccount)
+		index.POST("/newAccount", newAccount)
+		index.PUT("/setCallBackUrl", setCallBackUrl)
+		//setCallBackUrl
+		// index.Any("/balances", any)
 
-		// index.Use(sign)
 	}
+	e.Any("/*", any)
+	return e
 
-	// r.GET("/balance", &controllers.BalanceController{}),
-	// r.GET("/createTransferTxData", ft, "post:CreateTransferTxData"),
-	// r.GET("/submitTx", ft, "post:SubmitTx"),
+}
 
-	// r.GET("/getTxStatus", ft, "get:GetTxStatus"),
+func main() {
 
-	// r.GET("/subscribe", &controllers.AccountController{DB: db}, "post:Subscribe"),
+	flag.StringVar(&env, "env", "dev", "env")
+	flag.Parse()
 
-	// r.GET("/account")
-	return r
+	initConf()
+	initLog()
+
+	baseURL := viper.GetString(env + ".baseUrl")
+	apikey := viper.GetString(env + ".apiKey")
+	seckey := viper.GetString(env + ".secKey")
+
+	app = api.NewApp().SetBaseUrl(baseURL).SetApikey(apikey).SetSecKey(seckey)
+	e := setupRouter()
+
+	// Listen and Server in 0.0.0.0:7688
+	host := viper.GetInt(env + ".host")
+	if host == 0 {
+		host = 7688
+	}
+	listen := fmt.Sprintf(":%d", host)
+
+	// Start server
+	e.Logger.Fatal(e.Start(listen))
+	// r.Run(listen)
+}
+
+// Handler
+func hello(c echo.Context) error {
+	return c.String(http.StatusOK, "Hello, World!")
 }
 
 func initConf() {
@@ -200,32 +180,9 @@ func InitViper(envprefix string, filename string, configPath []string) error {
 }
 func initLog() {
 	// 创建记录日志的文件
-	f, _ := os.Create("logs/space.log")
+	f, _ := os.Create("space.log")
 	// gin.DefaultWriter = io.MultiWriter(f)
 
 	// 如果需要将日志同时写入文件和控制台，请使用以下代码
 	gin.DefaultWriter = io.MultiWriter(f, os.Stdout)
-}
-
-func main() {
-	flag.StringVar(&env, "env", "dev", "env")
-	flag.Parse()
-
-	initConf()
-	initLog()
-
-	baseURL := viper.GetString(env + ".baseUrl")
-	apikey := viper.GetString(env + ".apiKey")
-	seckey := viper.GetString(env + ".secKey")
-
-	app = api.NewApp().SetBaseUrl(baseURL).SetApikey(apikey).SetSecKey(seckey)
-	r := setupRouter()
-	// Listen and Server in 0.0.0.0:8080
-	host := viper.GetInt(env + ".host")
-	if host == 0 {
-		host = 7788
-	}
-	listen := fmt.Sprintf(":%d", host)
-
-	r.Run(listen)
 }
