@@ -1,8 +1,8 @@
 package controllers
 
 import (
-	"century/oasis/api/db"
 	"century/oasis/api/models"
+	"century/oasis/api/util"
 	"context"
 	"fmt"
 	"strings"
@@ -18,7 +18,7 @@ import (
 // Operations about Users
 type AccountController struct {
 	beego.Controller
-	DB db.MongoInterface
+	DB util.MongoInterface
 }
 
 // @router / [get]

@@ -7,6 +7,33 @@ import (
 
 func init() {
 
+    beego.GlobalControllerRouter["century/oasis/api/controllers:AccountController"] = append(beego.GlobalControllerRouter["century/oasis/api/controllers:AccountController"],
+        beego.ControllerComments{
+            Method: "Get",
+            Router: `/`,
+            AllowHTTPMethods: []string{"get"},
+            MethodParams: param.Make(),
+            Filters: nil,
+            Params: nil})
+
+    beego.GlobalControllerRouter["century/oasis/api/controllers:AccountController"] = append(beego.GlobalControllerRouter["century/oasis/api/controllers:AccountController"],
+        beego.ControllerComments{
+            Method: "Post",
+            Router: `/`,
+            AllowHTTPMethods: []string{"post"},
+            MethodParams: param.Make(),
+            Filters: nil,
+            Params: nil})
+
+    beego.GlobalControllerRouter["century/oasis/api/controllers:AccountController"] = append(beego.GlobalControllerRouter["century/oasis/api/controllers:AccountController"],
+        beego.ControllerComments{
+            Method: "Put",
+            Router: `/`,
+            AllowHTTPMethods: []string{"put"},
+            MethodParams: param.Make(),
+            Filters: nil,
+            Params: nil})
+
     beego.GlobalControllerRouter["century/oasis/api/controllers:ObjectController"] = append(beego.GlobalControllerRouter["century/oasis/api/controllers:ObjectController"],
         beego.ControllerComments{
             Method: "Post",

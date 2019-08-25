@@ -1,8 +1,8 @@
 package controllers
 
 import (
-	"century/oasis/api/db"
 	"century/oasis/api/models"
+	"century/oasis/api/util"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,7 +18,8 @@ import (
 // Operations about Users
 type TransferController struct {
 	beego.Controller
-	DB db.MongoInterface
+	DB    util.MongoInterface
+	Kafka util.KaInterface
 }
 
 //CreateTransferTxData 创建未签名事务
@@ -118,7 +119,7 @@ func (tf *TransferController) CreateTransferTxData() {
 	// id, _ := primitive.ObjectIDFromHex(transfer.RequestID)
 	// where := bson.M{"_id": id} //insertresult.InsertedID
 	where := bson.M{"_id": insertresult.InsertedID} //
-	updateStr := bson.M{"$set": bson.M{"txData": txData, "code": 2, "status": "txDataCreated", "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": "update txData at: ${Date.now()}"}}
+	updateStr := bson.M{"$set": bson.M{"txData": txData, "code": 2, "status": "txDataCreated", "type": "tranfer", "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": "update txData at: ${Date.now()}"}}
 	upresult := tf.DB.ConnCollection("transfers").FindOneAndUpdate(context.Background(), where, updateStr)
 	if upresult.Err() != nil {
 		tf.Data["json"] = map[string]interface{}{
@@ -141,32 +142,22 @@ func (tf *TransferController) SubmitTx() {
 
 	// d := tf.Data["db"].(db.MongoInterface)
 
-	// var transfer models.Transfer
-	// json.Unmarshal(tf.Ctx.Input.RequestBody, &transfer) // 不好使 传 json TODO: 带研究
 	singedRawTx := tf.GetString("singedRawTx")
 	requestID := tf.GetString("requestId")
 
-	// reqBody := fmt.Sprintf("from=%s&to=%s&value=%s", transfer.From, transfer.To, transfer.Value)
+	if singedRawTx == "" || requestID == "" {
 
-	// resp, err := http.Post(url, "application/x-www-form-urlencoded", strings.NewReader(reqBody))
+		tf.Data["json"] = map[string]interface{}{
+			"code": 40001,
+			"msg":  "empty requestId or singedRawTx . please check",
+		}
 
-	// if err != nil {
-	// 	fmt.Println("get err", err)
-	// }
-	// defer resp.Body.Close()
+		return
+	}
 
-	// result, _ := ioutil.ReadAll(resp.Body)
-	// fmt.Println(string(result))
-	host := beego.AppConfig.String("builderHost")
-	port := beego.AppConfig.String("builderPort")
-	url := fmt.Sprintf("http://%s:%s/api/v1/submitTxData", host, port)
-	reqBody := fmt.Sprintf("requestId=%s&singedRawTx=%s", requestID, singedRawTx)
-	req := httplib.Post(url)
-	req.Body(reqBody)
-	req.Header("Content-Type", "application/x-www-form-urlencoded")
+	transfer := tf.DB.ConnCollection("transfers").FindOne(context.Background(), bson.M{"_id": requestID})
 
-	var resp models.CommResp
-	err := req.ToJSON(&resp)
+	raws, err := transfer.DecodeBytes()
 	if err != nil {
 		tf.Data["json"] = map[string]interface{}{
 			"code": 40001,
@@ -175,17 +166,65 @@ func (tf *TransferController) SubmitTx() {
 
 		return
 	}
-	if resp.Code != 0 {
-		tf.Data["json"] = map[string]interface{}{
-			"code": 40000,
-			"msg":  resp.Msg,
-		}
+	txType := raws.Lookup("type").String()
 
+	if txType != "transfer" {
+		tf.Data["json"] = map[string]interface{}{
+			"code": 40001,
+			"msg":  "unsupport tx type ,current have ['transfer']",
+		}
 		return
 	}
+
+	// host := beego.AppConfig.String("builderHost")
+	// port := beego.AppConfig.String("builderPort")
+	// url := fmt.Sprintf("http://%s:%s/api/v1/submitTxData", host, port)
+	// reqBody := fmt.Sprintf("requestId=%s&singedRawTx=%s", requestID, singedRawTx)
+	// req := httplib.Post(url)
+	// req.Body(reqBody)
+	// req.Header("Content-Type", "application/x-www-form-urlencoded")
+
+	// var resp models.CommResp
+	// err = req.ToJSON(&resp)
+	// if err != nil {
+	// 	tf.Data["json"] = map[string]interface{}{
+	// 		"code": 40001,
+	// 		"msg":  err.Error(),
+	// 	}
+
+	// 	return
+	// }
+	// if resp.Code != 0 {
+	// 	tf.Data["json"] = map[string]interface{}{
+	// 		"code": 40000,
+	// 		"msg":  resp.Msg,
+	// 	}
+
+	// 	return
+	// }
+
 	// TODO: kakfa
+	sub := struct {
+		RequestID   string `json:"requestId"`
+		SingedRawTx string `json:"singedRawTx"`
+	}{
+		requestID,
+		singedRawTx,
+	}
+
+	pid, offset, err := tf.Kafka.SendMsg("SUBMIT", "VCT_SUBMIT", sub)
+
+	if err != nil {
+		tf.Data["json"] = map[string]interface{}{
+			"code": 40001,
+			"msg":  "send kafka error" + err.Error(),
+		}
+		return
+	}
+	kafkaMsg := bson.M{"key": "SUBMIT", "topic": "VCT_SUBMIT", "message": sub}
+	kafkaMsgResult := bson.M{"pid": pid, "offset": offset}
 	//  const updateStr2 = { $set: { kafkaMsg, kafkaMsgResult, code: 8, status: 'sendKafkaMsg', updatedAt: Date.now() }, $push: { logs: `sendKafkaMsg at: ${Date.now()}` } }
-	updateStr := bson.M{"$set": bson.M{"code": 8, "status": "send", "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": "sendKafkaMsg at: ${Date.now()}"}}
+	updateStr := bson.M{"$set": bson.M{"code": 8, "kafkaMsg": kafkaMsg, "kafkaMsgResult": kafkaMsgResult, "status": "sendkafka", "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": "sendKafkaMsg at: ${Date.now()}"}}
 	upresult := tf.DB.ConnCollection("transfers").FindOneAndUpdate(context.Background(), bson.M{"_id": requestID}, updateStr)
 	if upresult.Err() != nil {
 		tf.Data["json"] = map[string]interface{}{

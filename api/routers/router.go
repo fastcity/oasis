@@ -9,7 +9,8 @@ package routers
 
 import (
 	"century/oasis/api/controllers"
-	"century/oasis/api/db"
+	"century/oasis/api/util"
+
 	"century/oasis/api/middleware"
 
 	"github.com/astaxie/beego"
@@ -17,7 +18,8 @@ import (
 
 func init() {
 
-	dbs := db.GetDB()
+	dbs := util.GetDB()
+	kafka := util.NewProducer(beego.AppConfig.Strings("kafka::service"))
 
 	ns := beego.NewNamespace("/v1",
 		beego.NSNamespace("/object",
@@ -33,7 +35,7 @@ func init() {
 	)
 	beego.AddNamespace(ns)
 
-	ft := &controllers.TransferController{DB: dbs}
+	ft := &controllers.TransferController{DB: dbs, Kafka: kafka}
 	middle := middleware.NewMiddle(dbs)
 
 	nsAcc := beego.NewNamespace("/api/v1",

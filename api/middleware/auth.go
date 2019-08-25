@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"century/oasis/api/db"
+	"century/oasis/api/util"
 	"crypto/md5"
 	"encoding/hex"
 	"net/http"
@@ -21,14 +21,14 @@ const (
 )
 
 type middle struct {
-	dbs db.MongoInterface
+	dbs util.MongoInterface
 }
 
 type MiddleI interface {
 	Auth() func(ctx *context.Context)
 }
 
-func NewMiddle(dbs db.MongoInterface) MiddleI {
+func NewMiddle(dbs util.MongoInterface) MiddleI {
 
 	return &middle{
 		dbs: dbs,
