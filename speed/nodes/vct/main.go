@@ -257,6 +257,17 @@ func readAndParseBlock(number int64) {
 		db.GetCollection(chaindb, "transactions").FindOneAndUpdate(context.Background(), bson.M{"txid": b.Result.Txid}, bson.M{"$set": txs}, op)
 
 		kafka.SendMsg("TX", "VCT_TX", h)
+
+		// j, _ := strconv.Atoi(h)
+		// j = j % 2
+		// if j == 0 {
+		// 	fmt.Println("VCT_TX")
+		// 	kafka.SendMsg("TX", "VCT_TX", h)
+		// } else {
+		// 	fmt.Println("VCT_TRANSACTION")
+		// 	kafka.SendMsg("SUBMIT_TRANSFER", "VCT_TRANSACTION", h)
+		// }
+
 	}
 
 	// 			/**

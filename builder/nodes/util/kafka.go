@@ -2,7 +2,7 @@ package util
 
 import (
 	"fmt"
-	"strings"
+	"sync"
 
 	"github.com/Shopify/sarama"
 )
@@ -20,6 +20,10 @@ type kaModel struct {
 
 	topics []string // 自己设置的监听的topic
 	keys   map[string]chan []byte
+
+	msgs chan map[string][]byte
+
+	wg sync.WaitGroup
 }
 
 // KaInterface KaInterface
@@ -28,8 +32,9 @@ type KaInterface interface {
 	AddKey(string, chan []byte) KaInterface
 	SetTopics([]string) KaInterface
 	SendMsg(string, string, string) error
-	ReciveMsg(chan []byte)
+	ReciveMsg()
 	GetKeyMsg(key string) chan []byte
+	GetMsg() map[string][]byte
 	Close()
 	Error() error
 }
@@ -65,7 +70,6 @@ func NewConsumer(addrs []string) KaInterface {
 		consumer: consumer,
 		addrs:    addrs,
 	}
-	fmt.Println("m NewConsumer", m.consumer)
 	return m
 }
 
@@ -98,6 +102,26 @@ func (k *kaModel) AddKey(key string, ch chan []byte) KaInterface {
 	return k
 }
 
+func (k *kaModel) GetMsg() map[string][]byte {
+
+	if k.msgs == nil {
+		k.msgs = make(chan map[string][]byte) // 不加这个先getmsg 就卡住了，接受不了消息
+	}
+	select {
+	case m := <-k.msgs:
+		return m
+	}
+}
+
+func (k *kaModel) setMsg(key string, value []byte) {
+	if k.msgs == nil {
+		k.msgs = make(chan map[string][]byte)
+	}
+	k.msgs <- map[string][]byte{
+		key: value,
+	}
+}
+
 func (k *kaModel) SendMsg(key, topic, data string) error {
 	msg := &sarama.ProducerMessage{
 		Topic: topic,
@@ -115,7 +139,7 @@ func (k *kaModel) SendMsg(key, topic, data string) error {
 	return nil
 }
 
-func (k *kaModel) ReciveMsg(msgValue chan []byte) {
+func (k *kaModel) ReciveMsg() {
 	if k.consumer == nil {
 		logger.Error("sarama.NewConsumer  k.Consumer==nil:")
 	}
@@ -126,50 +150,53 @@ func (k *kaModel) ReciveMsg(msgValue chan []byte) {
 
 	k.kaTopics = kaTopics
 
-	// msgKey := make(chan []byte)
-
 	for _, topic := range k.topics {
-		logger.Debug("topic", topic)
+		logger.Debug("topic:", topic)
 
 		if !k.topicExist(topic) {
 			logger.Error("topic is not exist on kafka", topic)
 			continue
 		}
+		k.wg.Add(1)
 		//  一个 topic 一个 协程
-
-		partitionList, err := k.consumer.Partitions(topic)
-
-		if err != nil {
-			logger.Error(" get topic Partitions error:", err)
-		}
-		fmt.Println("partitionList:", partitionList)
-		for partition := range partitionList {
-			pc, err := k.consumer.ConsumePartition(topic, int32(partition), sarama.OffsetNewest)
-			if err != nil {
-				logger.Error("sarama ConsumePartition error:", err)
-			}
-
-			defer pc.AsyncClose()
-
-			for {
-				select {
-				case msg := <-pc.Messages():
-
-					k.keys[string(msg.Key)] <- msg.Value
-					// switch string(msg.Key) {
-					// case "TX":
-					// 	msgValue <- msg.Value
-
-					// }
-
-					logger.Debugf("msg offset: %d, partition: %d, timestamp: %s,key:%s, value: %s\n", msg.Offset, msg.Partition, msg.Timestamp.String(), string(msg.Key), string(msg.Value))
-				case err := <-pc.Errors():
-					logger.Errorf("err :%s\n", err.Error())
-				}
-			}
-		}
+		go k.reciveMsgByTopic(topic)
 	}
-	// return msgKey
+
+	k.wg.Wait()
+
+}
+
+func (k *kaModel) reciveMsgByTopic(topic string) {
+
+	defer k.wg.Done()
+	partitionList, err := k.consumer.Partitions(topic)
+
+	if err != nil {
+		logger.Error(" get topic Partitions error:", err)
+	}
+	logger.Debug("partitionList:", partitionList)
+
+	for partition := range partitionList {
+		pc, err := k.consumer.ConsumePartition(topic, int32(partition), sarama.OffsetNewest)
+		if err != nil {
+			logger.Error("sarama ConsumePartition error:", err)
+		}
+		// go func(pc sarama.PartitionConsumer) {
+		defer pc.AsyncClose()
+		for {
+			select {
+			case msg := <-pc.Messages():
+				// k.keys[string(msg.Key)] <- msg.Value
+
+				k.setMsg(string(msg.Key), msg.Value)
+
+				logger.Debugf("----msg offset: %d, partition: %d, timestamp: %s,key:%s, value: %s", msg.Offset, msg.Partition, msg.Timestamp.String(), string(msg.Key), string(msg.Value))
+			case err := <-pc.Errors():
+				logger.Errorf("err :%s\n", err.Error())
+			}
+		}
+		// }(pc)
+	}
 }
 
 func (k *kaModel) GetKeyMsg(key string) chan []byte {
@@ -178,8 +205,8 @@ func (k *kaModel) GetKeyMsg(key string) chan []byte {
 
 func (k *kaModel) Close() {
 	if k != nil {
-		if k.consumer != nil {
-			k.consumer.Close()
+		if k.producer != nil {
+			k.producer.Close()
 		}
 		if k.consumer != nil {
 			k.consumer.Close()
@@ -194,16 +221,6 @@ func (k *kaModel) Error() error {
 	}
 
 	return k.err
-}
-
-func findAll(strs []string) []string {
-	s := []string{}
-	for _, str := range strs {
-		if strings.HasPrefix(str, "VCT") {
-			s = append(s, str)
-		}
-	}
-	return s
 }
 
 func (k *kaModel) topicExist(topic string) bool {

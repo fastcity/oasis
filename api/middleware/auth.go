@@ -80,7 +80,7 @@ func sign(ctx *context.Context) string {
 
 	// ctx.Set("signature", digest)
 	// fmt.Printf("%s\n", digest) // 输出加密结果
-	beego.Debug(digest)
+	beego.Debug("signature:", digest)
 
 	return strings.ToLower(digest)
 }

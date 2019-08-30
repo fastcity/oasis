@@ -58,7 +58,7 @@ func main() {
 	// viper.SetConfigFile("")
 	beforeStart()
 
-	go loopReadAndPaser()
+	go kafkaListing()
 
 	// util.InitKa()
 
@@ -235,13 +235,13 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 			tf.Coin = "VCT_TOKEN"
 		}
 
-		insertresult, err := db.GetCollection(commondb, "transfertochains").InsertOne(context.Background(),
+		_, err := db.GetCollection(commondb, "transfertochains").InsertOne(context.Background(),
 			bson.M{"chain": "VCT", "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey, "value": tf.Value, "requestId": tf.RequestID})
 
 		if err != nil {
 			fmt.Println("InsertOne transfertochains error", err)
 		}
-		fmt.Println("insertresult", insertresult)
+		// fmt.Println("insertresult", insertresult)
 
 		// res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
 		_, err = chainConf.CreateTransactionData(tf.From, tf.To, tf.TokenKey, tf.Amount)
@@ -282,75 +282,16 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 
 func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 	requestID := r.PostFormValue("requestId")
-	singedRawTx := r.PostFormValue("singedRawTx")
+	signedRawTx := r.PostFormValue("signedRawTx")
 
-	res := &Result{}
-	defer func(res *Result) {
-		if res.Code != 0 {
-			setSendTransactionError(requestID, res.Msg)
-		}
+	res := submitTx(map[string]string{
+		"requestId":   requestID,
+		"signedRawTx": signedRawTx,
+	})
+	ba, _ := json.Marshal(res)
+	w.Header().Add("Content-Type", "application/json")
+	w.Write(ba)
 
-		ba, _ := json.Marshal(res)
-		w.Header().Add("Content-Type", "application/json")
-		w.Write(ba)
-	}(res)
-
-	id, _ := primitive.ObjectIDFromHex(requestID) // requestID 需要转化为objectId
-	where := bson.M{"_id": id}                    //insertresult.InsertedID
-	result := db.GetCollection(commondb, "transfers").FindOne(context.Background(), where)
-
-	// type singedTx struct {
-	// 	TxData map[string]string `json:"txData"`
-	// }
-	// var tx = &singedTx{}
-	// result.Decode(tx)
-
-	rawByte, _ := result.DecodeBytes()
-	raw := rawByte.Lookup("txData", "raw").String() // 坑 返回的是json ，单纯字符串会有 /""/ 应去掉
-	raw = strings.Trim(raw, "\"")
-
-	if raw == "" {
-		res.Code = 40000
-		res.Msg = "not find raw tx"
-		// ba, _ := json.Marshal(res)
-		// w.Write(ba)
-		return
-	}
-
-	b, err := chainConf.SubmitTransactionData(raw, singedRawTx)
-	if err != nil {
-		res.Code = 40000
-		res.Msg = err.Error()
-		return
-	}
-
-	resp, _ := chainConf.ToResponse()
-	fmt.Println("resp", resp)
-
-	txid, err := jsonparser.GetString(b, "result")
-	if err != nil {
-		res.Code = 40000
-		res.Msg = err.Error()
-		return
-	}
-	fmt.Println("res", txid)
-
-	setSendTransactionTxid(requestID, txid)
-	// data := &Result{
-	// 	Code: 0,
-	// 	Data: map[interface{}]interface{}{
-	// 		"txid": txid,
-	// 	},
-	// }
-	res.Code = 0
-	res.Data = map[string]interface{}{
-		"txid": txid,
-	}
-	// ba, _ := json.Marshal(data)
-
-	// w.Write(ba)
-	return
-	// fmt.Fprintln(w, string(ba))
 }
 
 func getBlockHeight(w http.ResponseWriter, r *http.Request) {
@@ -483,9 +424,9 @@ func getHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	total, _ := db.GetCollection("astro", "transferfromchains").CountDocuments(context.Background(), where)
+	total, _ := db.GetCollection(chaindb, "transferfromchains").CountDocuments(context.Background(), where)
 
-	result, err := db.GetCollection("astro", "transferfromchains").Find(context.Background(), where, op)
+	result, err := db.GetCollection(chaindb, "transferfromchains").Find(context.Background(), where, op)
 
 	if err != nil {
 		res.Code = 40000
@@ -532,32 +473,97 @@ func InitViper(envprefix string, filename string, configPath []string) error {
 
 }
 
-func loopReadAndPaser() {
-	msg := make(chan []byte)
-
-	go func() {
-		kafka.ReciveMsg(msg)
-	}()
+func kafkaListing() {
+	go kafka.ReciveMsg()
 
 	for {
-		select {
 
-		// case m := <-msg:
-		// 	tfcs := paserTx(m)
-		// 	for _, tfc := range tfcs {
-		// 		responseNewTx(tfc)
-		// 	}
-		// }
-		case m := <-kafka.GetKeyMsg("TX"):
-
-			tfcs := paserTx(m)
-			for _, tfc := range tfcs {
-				responseNewTx(tfc)
+		for k, v := range kafka.GetMsg() {
+			switch k {
+			case "TX":
+				txHand(v)
+			case "SUBMIT_TRANSFER":
+				submitTxKakfka(v)
 			}
+
 		}
 	}
 
 	// kafka.ReciveMsg()
+}
+
+func submitTxKakfka(body []byte) {
+	var bd map[string]string
+
+	err := json.Unmarshal(body, &bd)
+	if err != nil {
+		logger.Error("submitTxKakfka error", err)
+		return
+	}
+	submitTx(bd)
+}
+
+func submitTx(body map[string]string) (res *Result) {
+
+	requestID := body["requestId"]
+	signedRawTx := body["signedRawTx"]
+
+	if res == nil {
+		res = &Result{}
+	}
+	// res := &Result{}
+	defer func(res *Result) {
+		if res.Code != 0 {
+			setSendTransactionError(requestID, res.Msg)
+		}
+	}(res)
+
+	id, _ := primitive.ObjectIDFromHex(requestID) // requestID 需要转化为objectId
+	where := bson.M{"_id": id}                    //insertresult.InsertedID
+	result := db.GetCollection(commondb, "transfers").FindOne(context.Background(), where)
+
+	rawByte, _ := result.DecodeBytes()
+	raw := rawByte.Lookup("txData", "raw").String() // 坑 返回的是json ，单纯字符串会有 /""/ 应去掉
+	raw = strings.Trim(raw, "\"")
+
+	if raw == "" {
+		res.Code = 40000
+		res.Msg = "not find raw tx"
+		return
+	}
+
+	b, err := chainConf.SubmitTransactionData(raw, signedRawTx)
+	if err != nil {
+		res.Code = 40000
+		res.Msg = err.Error()
+		return
+	}
+
+	resp, _ := chainConf.ToResponse()
+	fmt.Println("resp", resp)
+
+	txid, err := jsonparser.GetString(b, "result")
+	if err != nil {
+		res.Code = 40000
+		res.Msg = err.Error()
+		return
+	}
+
+	setSendTransactionTxid(requestID, txid)
+
+	fmt.Println("-------------submit txid------------", txid)
+	res.Code = 0
+	res.Data = map[string]interface{}{
+		"txid": txid,
+	}
+	return
+}
+
+func txHand(msg []byte) {
+	tfcs := paserTx(msg)
+	for _, tfc := range tfcs {
+		responseNewTx(tfc)
+	}
 }
 
 func paserTx(msg []byte) []models.TransferFromChain {
@@ -609,7 +615,7 @@ func paserTx(msg []byte) []models.TransferFromChain {
 }
 
 func responseNewTx(tfc models.TransferFromChain) {
-	fmt.Println("responseNewTx", tfc)
+	// fmt.Println("responseNewTx", tfc)
 	// dbname := strings.ToLower(tfc.Chain)
 	if tfc.OnChain {
 		newTranferFromChain(tfc)
@@ -712,7 +718,7 @@ func newTranferFromChain(tfc models.TransferFromChain) {
 	ttcResult := db.GetCollection(chaindb, "transferTochains").FindOne(ctx, where)
 
 	if ttcResult.Err() != nil && ttcResult.Err() != mongo.ErrNoDocuments {
-		fmt.Println(">>>>>>>>>>>>>ttcResult", ttcResult.Err())
+		logger.Error(">>>>>>>>>>>>>ttcResult", ttcResult.Err())
 		return
 	}
 
@@ -738,14 +744,9 @@ func newTranferFromChain(tfc models.TransferFromChain) {
 	}
 
 	updateStr = bson.M{"$set": tx}
-	fmt.Println("tx", updateStr)
 
 	if confirmedNumber == 0 {
 		db.GetCollection(chaindb, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
-		// // TODO: 查询 订阅表
-		// onchain(tx.From, "OUT", tx)
-		// onchain(tx.To, "IN", tx)
-
 	} else {
 		db.GetCollection(chaindb, "transferconfirmings").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
 	}
@@ -912,16 +913,16 @@ func finish(address, inout string, tx map[string]string) {
 
 func sendNotify(key, accountID, address string, data interface{}) {
 
-	fmt.Println("sendNotify", key, accountID, address, data)
+	// fmt.Println("sendNotify", key, accountID, address, data)
 	// mongo 取出来的有时会有“ " ”
 	accountID = strings.Trim(accountID, "\"")
 	// op := options.FindOneAndUpdate().SetUpsert(true)
-	insertresult, err := db.GetCollection(commondb, "notifytasks").InsertOne(context.Background(), bson.M{"key": key, "data": data, "address": address, "_account": accountID})
+	_, err := db.GetCollection(commondb, "notifytasks").InsertOne(context.Background(), bson.M{"key": key, "data": data, "address": address, "_account": accountID})
 
 	if err != nil {
 		fmt.Println("通知 消息 存库失败", err)
 	}
-	fmt.Println("insertresult", insertresult)
+	// fmt.Println("insertresult", insertresult)
 }
 
 func addSubscribesHandle(address, account string) {

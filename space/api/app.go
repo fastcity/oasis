@@ -62,8 +62,8 @@ func (a *App) RedirectGet() {
 
 	url := a.baseUrl + a.ctx.Request().RequestURI
 
-	signature := sign(a.ctx)
-	body := url + "&signature=" + signature
+	_, signature := a.sign()
+	body := url + "&signature=" + signature + "&apiKey=" + a.apiKey
 	resp, err := http.Get(body)
 	if err != nil {
 		// c.Status(http.StatusServiceUnavailable)
@@ -82,9 +82,10 @@ func (a *App) RedirectPsot() {
 	f := a.ctx.Request().Form
 
 	a.ctx.Logger().Debug("get params body", f)
-
-	path := a.baseUrl + a.ctx.Request().URL.Path
-	requestBody := a.ctx.Request().URL.RawQuery
+	data, signature := a.sign()
+	path := a.baseUrl + a.ctx.Path()
+	// requestBody := a.ctx.FormParams()
+	requestBody := data + "&signature=" + signature
 	body := strings.NewReader(requestBody)
 	resp, err := http.Post(path, "application/x-www-form-urlencoded", body) //TODO: 原始type
 	if err != nil {
@@ -135,12 +136,13 @@ func getKeys(data map[string][]string) []string {
 	return keys
 }
 
-func sign(ctx echo.Context) string {
+func (a *App) sign() (string, string) {
 	// form := map[string]string{}
 
-	ctx.Request().ParseMultipartForm(defaultMaxMemory)
-	body := ctx.Request().Form
+	a.ctx.Request().ParseMultipartForm(defaultMaxMemory)
+	body := a.ctx.Request().Form
 
+	body["apiKey"] = []string{a.apiKey}
 	sortKey := sortKeys(body)
 
 	data := ""
@@ -154,8 +156,8 @@ func sign(ctx echo.Context) string {
 		}
 	}
 	data = strings.TrimRight(data, "&")
-	fmt.Println("-------sign data----------", data)
-	ctx.Logger().Debug("-------sign data----------", data)
+	fmt.Println("========data", data)
+	a.ctx.Logger().Debug("-------sign data----------", data)
 	h := md5.New()
 	h.Write([]byte(data))
 	cipherStr := h.Sum(nil)
@@ -163,7 +165,7 @@ func sign(ctx echo.Context) string {
 	digest := hex.EncodeToString(cipherStr)
 
 	// ctx.Set("signature", digest)
-	fmt.Printf("%s\n", digest) // 输出加密结果
+	fmt.Println("signature", digest) // 输出加密结果
 
-	return strings.ToLower(digest)
+	return data, strings.ToLower(digest)
 }

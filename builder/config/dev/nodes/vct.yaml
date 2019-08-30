@@ -18,8 +18,10 @@ kafka:
     service:
         - "127.0.0.1:9092"
     topics:
+        - VCT_TRANSACTION
         - VCT_TX
     keys:
+        - SUBMIT_TRANSFER
         - TX
 
 chain:

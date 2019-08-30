@@ -107,6 +107,7 @@ func (k *kaModel) SendMsg(key, topic string, data interface{}) (int32, int64, er
 		return 0, 0, err
 	}
 
+	fmt.Println("SendMsg", key, topic, data)
 	msg := &sarama.ProducerMessage{
 		Topic: topic,
 		Key:   sarama.StringEncoder(key),

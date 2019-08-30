@@ -1,7 +1,7 @@
 package main
 
 import (
-	"century/space/api"
+	"century/oasis/space/api"
 	"flag"
 	"fmt"
 	"io"
@@ -91,23 +91,32 @@ func setupRouter() *echo.Echo {
 
 	// Routes
 	e.GET("/hello", hello)
+	g := e.Group("/api/v1")
+	g.GET("/balance", balance)
+	g.POST("/createTransferTxData", createTransferTxData)
+	g.POST("/submitTx", submitTx)
+	g.GET("/getTxStatus", getTxStatus)
+	g.GET("/subscribe", subscribe)
+	g.GET("/account", getAccount)
+	g.POST("/newAccount", newAccount)
+	g.PUT("/setCallBackUrl", setCallBackUrl)
+	g.Any("/*", any)
+	// index := e.Group("/api").Group("/v1")
+	// {
+	// 	// index.Use(sign)
+	// 	index.GET("/balance", balance)
+	// 	index.POST("/createTransferTxData", createTransferTxData)
+	// 	index.POST("/submitTx", submitTx)
+	// 	index.GET("/getTxStatus", getTxStatus)
+	// 	index.GET("/subscribe", subscribe)
+	// 	index.GET("/account", getAccount)
+	// 	index.POST("/newAccount", newAccount)
+	// 	index.PUT("/setCallBackUrl", setCallBackUrl)
+	// 	//setCallBackUrl
+	// 	// index.Any("/balances", any)
 
-	index := e.Group("/api").Group("/v1")
-	{
-		// index.Use(sign)
-		index.GET("/balance", balance)
-		index.POST("/createTransferTxData", createTransferTxData)
-		index.POST("/submitTx", submitTx)
-		index.GET("/getTxStatus", getTxStatus)
-		index.GET("/subscribe", subscribe)
-		index.GET("/account", getAccount)
-		index.POST("/newAccount", newAccount)
-		index.PUT("/setCallBackUrl", setCallBackUrl)
-		//setCallBackUrl
-		// index.Any("/balances", any)
-
-	}
-	e.Any("/*", any)
+	// }
+	// e.Any("/*", any)
 	return e
 
 }
