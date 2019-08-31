@@ -18,7 +18,7 @@
 4. space 对于各个api 接口的代理签名服务
 
 
-+ !(design)[https://raw.githubusercontent.com/fastcity/oasis/master/design.jpg]
+!(design)[https://raw.githubusercontent.com/fastcity/oasis/master/design.jpg]
 
 #### api
 ##### api/v1/account 设置apikey secKey等 【PUT】
