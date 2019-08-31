@@ -63,7 +63,7 @@ func (a *App) RedirectGet() {
 	url := a.baseUrl + a.ctx.Request().RequestURI
 
 	_, signature := a.sign()
-	body := url + "&signature=" + signature + "&apiKey=" + a.apiKey
+	body := url + "&signature=" + signature
 	resp, err := http.Get(body)
 	if err != nil {
 		// c.Status(http.StatusServiceUnavailable)
