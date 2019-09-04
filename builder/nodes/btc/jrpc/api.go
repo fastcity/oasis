@@ -16,7 +16,7 @@ type api struct {
 }
 type ChainApi interface {
 	GetBlockHeight() (int64, error)
-	GetBlockInfo(int64, interface{}) error
+	GetBlockInfo(int64) (map[string]interface{}, error)
 	CreateTransactionData(interface{}, interface{}) (interface{}, error)
 	SubmitTransactionData(interface{}) (interface{}, error)
 }
@@ -62,22 +62,24 @@ func (u *api) GetBlockHeight() (height int64, err error) {
 	return reply, nil
 }
 
-func (u *api) GetBlockInfo(height int64, txData interface{}) error {
+func (u *api) GetBlockInfo(height int64) (map[string]interface{}, error) {
 
 	var hashdata string
 	err := u.getRpcClient().CallFor(&hashdata, "getblockhash", height)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// var txData []byte
+	var txData map[string]interface{}
 	err = u.getRpcClient().CallFor(&txData, "getblock", hashdata, 2)
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	txData["blockHash"] = hashdata
 
 	// b, err := json.Marshal(txData)
 
-	return nil
+	return txData, nil
 }
 
 // createTransactionData 创建未签名事务
