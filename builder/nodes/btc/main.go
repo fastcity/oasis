@@ -2,9 +2,11 @@ package main
 
 import (
 	"century/oasis/builder/nodes/btc/jrpc"
+	"century/oasis/builder/nodes/btc/models"
 	"century/oasis/builder/nodes/util"
 
-	"century/oasis/builder/nodes/vct/models"
+	"github.com/shopspring/decimal"
+
 	"context"
 	"flag"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/buger/jsonparser"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
@@ -35,7 +38,8 @@ var (
 	assign             = "TOKEN.ASSIGN"
 	commondb           = "dynasty"
 	chaindb            = "btc"
-	confirmedNumber    = 0
+	chainSymbol        = "BTC"
+	confirmedNumber    int64
 	logger             *zap.SugaredLogger
 )
 
@@ -56,11 +60,9 @@ func main() {
 	// viper.SetConfigFile("")
 	beforeStart()
 
-	// go kafkaListing()
+	go kafkaListing()
 
-	// util.InitKa()
-
-	// defer kafka.Close()
+	defer kafka.Close()
 	defer db.Close()
 
 	initRouter()
@@ -69,13 +71,12 @@ func main() {
 func beforeStart() {
 
 	initConf()
-	// initKafka()
+	initKafka()
 	initDB()
 
 }
 
 func initConf() {
-	confirmedNumber = viper.GetInt("chain.confirmedNumber")
 
 	defaultConf := filepath.Join("../../config/", strings.ToLower(env), "nodes")
 	gopath := os.Getenv("GOPATH")
@@ -87,6 +88,7 @@ func initConf() {
 
 	InitViper(strings.ToLower(chain), strings.ToLower(chain), pathConf)
 
+	confirmedNumber = viper.GetInt64("chain.confirmedNumber")
 }
 
 func initDB() {
@@ -98,6 +100,8 @@ func initDB() {
 
 	commondb = viper.GetString("chain.commondb")
 	chaindb = viper.GetString("chain.chaindb")
+
+	chainSymbol = strings.ToUpper(chaindb)
 }
 
 func initKafka() {
@@ -113,7 +117,7 @@ func initRouter() {
 	username := viper.GetString("node.auth.user")
 	pwd := viper.GetString("node.auth.pass")
 	chainConf = jrpc.NewChainAPi(urlChain, username, pwd)
-
+	chainConf.SetFeeUrl(viper.GetString("chain.fee"))
 	// // 允许来自所有域名请求
 	// r.Header.Add("Access-Control-Allow-Origin", "*")
 	// // 设置所允许的HTTP请求方法
@@ -284,6 +288,7 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 		"requestId":   requestID,
 		"signedRawTx": signedRawTx,
 	})
+
 	ba, _ := json.Marshal(res)
 	w.Header().Add("Content-Type", "application/json")
 	w.Write(ba)
@@ -310,26 +315,46 @@ func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, string(b))
 }
 
-func getBlockInfo(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("-------------- getBlockHeight")
-	info, err := chainConf.GetBlockInfo(592882)
-	if err != nil {
-		fmt.Println("--------------err", err)
-	}
-
-	res := &Result{
-		Code: 0,
-		Data: info,
-	}
-
-	b, _ := json.Marshal(res)
-	w.Header().Add("Content-Type", "application/json")
-
-	fmt.Fprintln(w, string(b))
-}
-
 func getBalance(w http.ResponseWriter, r *http.Request) {
+	res := &Result{}
+	defer func(res *Result) {
+		w.Header().Add("Content-Type", "application/json")
+		ba, _ := json.Marshal(res)
+		w.Write(ba)
+	}(res)
 
+	address := r.FormValue("address")
+	fmt.Println("-------------- getBalance", address)
+	if address == "" {
+		res.Code = 40000
+		res.Msg = "address empty"
+
+		return
+	}
+	where := bson.D{{"address", address}}
+
+	if currentBlockNumber > 0 {
+		where = bson.D{{"address", address}, {"blockHeight", bson.M{"$lt": currentBlockNumber}}}
+	}
+	result, _ := db.GetCollection(chaindb, "utxos").Find(context.Background(), where)
+
+	b := 0
+
+	for result.Next(context.Background()) {
+		var utxo struct {
+			Value int `bson:"value"` // TODO:小数？
+		}
+		result.Decode(&utxo)
+		b = b + utxo.Value
+	}
+
+	res.Code = 0
+	res.Data = map[interface{}]interface{}{
+		"total": b,
+	}
+	return
+
+	// ba, _ := json.Marshal(res)
 	// address := r.FormValue("address")
 	// fmt.Println("-------------- getBalance", address)
 	// if address == "" {
@@ -377,22 +402,14 @@ func getBalance(w http.ResponseWriter, r *http.Request) {
 func getHistory(w http.ResponseWriter, r *http.Request) {
 	res := &Result{}
 	defer func(res *Result) {
-		// if res.Code != 0 {
-		// 	setSendTransactionError(requestID, res.Msg)
-		// }
-
 		ba, _ := json.Marshal(res)
 		w.Header().Add("Content-Type", "application/json")
 		w.Write(ba)
 	}(res)
 	address := r.FormValue("address")
-	tokenKey := r.FormValue("tokenKey")
 	if address == "" {
 		res.Code = 40000
 		res.Msg = "address empty"
-
-		// ba, _ := json.Marshal(res)
-		// w.Write(ba)
 		return
 	}
 	pageIndex := r.PostFormValue("pageIndex")
@@ -425,18 +442,6 @@ func getHistory(w http.ResponseWriter, r *http.Request) {
 				bson.D{{"to", address}},
 			},
 		},
-	}
-
-	if tokenKey != "" {
-		// bson.M 无序
-		where = bson.D{
-			{
-				"$or", bson.A{
-					bson.D{{"from", address}},
-					bson.D{{"to", address}},
-				},
-			}, {"tokenKey", tokenKey},
-		}
 	}
 
 	total, _ := db.GetCollection(chaindb, "transferfromchains").CountDocuments(context.Background(), where)
@@ -492,7 +497,6 @@ func kafkaListing() {
 	go kafka.ReciveMsg()
 
 	for {
-
 		for k, v := range kafka.GetMsg() {
 			switch k {
 			case "TX":
@@ -521,7 +525,7 @@ func submitTxKakfka(body []byte) {
 func submitTx(body map[string]string) (res *Result) {
 
 	requestID := body["requestId"]
-	// signedRawTx := body["signedRawTx"]
+	signedRawTx := body["signedRawTx"]
 
 	if res == nil {
 		res = &Result{}
@@ -533,67 +537,47 @@ func submitTx(body map[string]string) (res *Result) {
 		}
 	}(res)
 
-	// id, _ := primitive.ObjectIDFromHex(requestID) // requestID 需要转化为objectId
-	// where := bson.M{"_id": id}                    //insertresult.InsertedID
-	// result := db.GetCollection(commondb, "transfers").FindOne(context.Background(), where)
+	txid, err := chainConf.SubmitTransactionData(signedRawTx)
+	if err != nil {
+		res.Code = 40000
+		res.Msg = err.Error()
+		return
+	}
 
-	// rawByte, _ := result.DecodeBytes()
-	// raw := rawByte.Lookup("txData", "raw").String() // 坑 返回的是json ，单纯字符串会有 /""/ 应去掉
-	// raw = strings.Trim(raw, "\"")
+	res.Code = 0
+	res.Data = map[string]interface{}{
+		"txid": txid,
+	}
 
-	// if raw == "" {
-	// 	res.Code = 40000
-	// 	res.Msg = "not find raw tx"
-	// 	return
-	// }
-
-	// b, err := chainConf.SubmitTransactionData(raw, signedRawTx)
-	// if err != nil {
-	// 	res.Code = 40000
-	// 	res.Msg = err.Error()
-	// 	return
-	// }
-
-	// resp, _ := chainConf.ToResponse()
-	// fmt.Println("resp", resp)
-
-	// txid, err := jsonparser.GetString(b, "result")
-	// if err != nil {
-	// 	res.Code = 40000
-	// 	res.Msg = err.Error()
-	// 	return
-	// }
-
-	// setSendTransactionTxid(requestID, txid)
-
-	// fmt.Println("-------------submit txid------------", txid)
-	// res.Code = 0
-	// res.Data = map[string]interface{}{
-	// 	"txid": txid,
-	// }
+	setSendTransactionTxid(requestID, txid)
 	return
 }
 
 func txHand(msg []byte) {
+
 	tfcs := paserTx(msg)
 	for _, tfc := range tfcs {
 		responseNewTx(tfc)
 	}
+
+	newBlockNotify(string(msg))
 }
 
 func paserTx(msg []byte) []models.TransferFromChain {
-	fmt.Println("-+++++++++", string(msg))
+	data := string(msg)
+	fmt.Println("-+++++++++", data)
 	tfcs := []models.TransferFromChain{}
-	h := string(msg)
-	// fmt.Println("-+++++++++", string(blockInfo))
+	h, _ := strconv.ParseInt(data, 10, 0)
+	// h := string(msg)
 	type res struct {
 		Result *models.Blocks `json:"result"`
 	}
 	// fmt.Println("--------------- blockInfo", string(blockInfos))
-	curor, err := db.GetCollection("vct", "transactions").Find(context.Background(), bson.M{"blockHeight": h})
+	curor, err := db.GetCollection(chaindb, "transactions").Find(context.Background(), bson.M{"blockHeight": h})
 
 	if err != nil {
-		fmt.Println("get transferaction error")
+		logger.Error("get transferaction error")
+		return tfcs
 	}
 
 	defer curor.Close(context.Background())
@@ -603,50 +587,69 @@ func paserTx(msg []byte) []models.TransferFromChain {
 			fmt.Println("get transferaction error", err)
 		}
 		tfc := models.TransferFromChain{
-			Chain:    "VCT",
-			Coin:     "VCT",
-			TokenKey: "-",
+			Chain:       chainSymbol,
+			Coin:        chainSymbol,
+			TokenKey:    "-",
+			BlockHeight: tx.BlockHeight,
+			BlockTime:   tx.BlockTime,
+			Txid:        tx.Txid,
+			Vins:        tx.Vins,
+			Vouts:       tx.Vouts,
 		}
 
-		if tx.OnChain {
-			tfc.BlockHeight = tx.BlockHeight
-			tfc.BlockTime = tx.BlockTime
-			tfc.From = tx.From
-			tfc.To = tx.To
-			tfc.Txid = tx.Txid
-			tfc.Value = tx.Value
-			if tx.TokenKey != "" && tx.TokenKey != "-" {
-				tfc.TokenKey = tx.TokenKey
-				tfc.Coin = "VCT_TOKEN"
+		tos := []string{}
+		froms := []string{}
+		for _, vins := range tx.Vins {
+			intxid := vins["txid"]
+			vout := vins["vout"]
+			where := bson.D{{"txid", intxid}, {"vout", vout}}
+			var ins map[string]interface{}
+			db.GetCollection(chaindb, "utxos").FindOne(context.Background(), where).Decode(&ins)
+			if address := getAddressByUTXO(ins); address != "" {
+				froms = append(froms, address)
 			}
-			tfc.OnChain = true
-
-		} else {
-			tfc.Log = tx.Log
 		}
+
+		total := decimal.Zero
+		for _, vouts := range tx.Vouts {
+			v := vouts["value"]
+			vv := v.(float64)
+			total = total.Add(decimal.NewFromFloat(vv))
+			if address := getAddressByUTXO(vouts); address != "" {
+				tos = append(tos, address)
+			}
+		}
+
+		tfc.From = froms
+		tfc.To = tos
+		if len(froms) == 0 {
+			tfc.From = "coinbase"
+		}
+
+		tfc.Value = total.String()
+
 		tfcs = append(tfcs, tfc)
 	}
 	return tfcs
 }
 
-func responseNewTx(tfc models.TransferFromChain) {
-	// fmt.Println("responseNewTx", tfc)
-	// dbname := strings.ToLower(tfc.Chain)
-	if tfc.OnChain {
-		newTranferFromChain(tfc)
+func getAddressByUTXO(vouts map[string]interface{}) string {
+
+	script := vouts["scriptPubKey"]
+	sc, _ := json.Marshal(script)
+	address, err := jsonparser.GetString(sc, "addresses", "[0]")
+	if err != nil && err != jsonparser.KeyPathNotFoundError {
+		logger.Error("jsonparser.GetString vout-->scriptPubKey--->addresses [0] error", err)
 	} else {
-		ctx := context.Background()
-		where := bson.M{"txid": tfc.Txid}
-		ttcResult := db.GetCollection(chaindb, "transferTochains").FindOne(ctx, where)
-		if ttcResult != nil && ttcResult.Err() == nil {
-			// ttc := models.TransferToChain{}
-			// ttcResult.Decode(&ttc)
-			rawByte, _ := ttcResult.DecodeBytes()
-			raw := rawByte.Lookup("requestId").String() // 坑 返回的是json ，单纯字符串会有 /""/ 应去掉
-			requestID := strings.Trim(raw, "\"")
-			setSendTransactionError(requestID, tfc.Log)
-		}
+		return address
 	}
+	return ""
+}
+
+func responseNewTx(tfc models.TransferFromChain) {
+
+	newTranferFromChain(tfc)
+
 }
 
 func setSendTransactionTxid(requestID, txid string) {
@@ -725,8 +728,11 @@ func setSendTransactionError(requestID, msg string) {
 
 func newTranferFromChain(tfc models.TransferFromChain) {
 	tx := tfc
+	now := primitive.DateTime(time.Now().Unix() * 1000)
+	nowString := time.Now().String()
 
-	tx.CreatedAt = time.Now().Unix()
+	tx.CreatedAt = now
+	tx.UpdatedAt = nowString
 	op := options.FindOneAndUpdate().SetUpsert(true)
 	ctx := context.Background()
 	where := bson.M{"txid": tx.Txid}
@@ -738,13 +744,16 @@ func newTranferFromChain(tfc models.TransferFromChain) {
 	}
 
 	var updateStr bson.M
-	if ttcResult != nil && ttcResult.Err() == nil {
+	if ttcResult != nil && ttcResult.Err() != nil {
 		ttc := models.TransferToChain{}
 		ttcResult.Decode(&ttc)
 		tx.ID = ttc.ID
 		tx.RequestId = ttc.RequestId
 
-		updateStr1 := bson.M{"$set": bson.M{"code": 32, "status": "FROM_CHAIN", "updatedAt": time.Now().Unix()}, "$push": bson.M{"logs": `FROM_CHAIN at: ${Date.now()}`}}
+		updateStr1 := bson.M{
+			"$set":  bson.M{"code": 32, "status": "FROM_CHAIN", "updatedAt": nowString},
+			"$push": bson.M{"logs": `FROM_CHAIN at: ` + nowString},
+		}
 
 		id, _ := primitive.ObjectIDFromHex(ttc.RequestId)
 		db.GetCollection(commondb, "transfers").FindOneAndUpdate(ctx, bson.M{"_id": id}, updateStr1)
@@ -765,114 +774,108 @@ func newTranferFromChain(tfc models.TransferFromChain) {
 	} else {
 		db.GetCollection(chaindb, "transferconfirmings").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
 	}
-	onchain(tx.From, "OUT", tx)
-	onchain(tx.To, "IN", tx)
 
+	switch froms := tx.From.(type) {
+	case []string:
+		for _, from := range froms {
+			onchain(from, "OUT", tx)
+		}
+	case string:
+		onchain(froms, "OUT", tx)
+	}
+
+	switch tos := tx.To.(type) {
+	case []string:
+		for _, to := range tos {
+			onchain(to, "OUT", tx)
+		}
+	case string:
+		onchain(tos, "OUT", tx)
+	}
 }
 
-// TODO: 待完成
+//
 func newBlockNotify(blockNumber string) {
-	// if (this.inProcess) return
-
-	// this.inProcess = true
-
 	ctx := context.Background()
-	// const safeBlockNumber = blockNumber - this.confirmedMaxNum + 1
-	// // this.logger.info('[DynastyThreadUtil:newBlockNotify]', blockNumber, 'safeBlockNumber', safeBlockNumber)
-	// const tcs = await this.chaindb.models.TransferConfirming.find().limit(10240)
+	number, _ := strconv.ParseInt(blockNumber, 10, 0)
+	// number := s
+	safeBlockNumber := number - confirmedNumber + 1
+
 	op := options.Find().SetLimit(1024)
 	result, err := db.GetCollection(chaindb, "transferconfirmings").Find(ctx, bson.M{}, op)
 	if err != nil {
 		fmt.Println("transfer not found!")
 	}
 	if result.Next(ctx) {
+		ttc := models.TransferConfirming{}
+		result.Decode(&ttc)
 
+		confirmdata := map[string]interface{}{
+			"id":        ttc.ID.Hex(),
+			"requestId": ttc.RequestId,
+			"txid":      ttc.Txid,
+		}
+
+		isfinish := ttc.BlockHeight <= safeBlockNumber
+		confirmedNum := number - ttc.BlockHeight + 1
+		if isfinish {
+			// now := primitive.DateTime(time.Now().Unix())
+			op := options.FindOneAndUpdate().SetUpsert(true)
+			db.GetCollection(chaindb, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"_id": ttc.ID}, bson.M{"$set": ttc}, op)
+
+			// if tfc.Err() == mongo.ErrNoDocuments {
+			// 	db.GetCollection(chaindb, "transferfromchains").FindOneAndUpdate(context.Background(), bson.M{"_id": ttc.ID}, bson.M{"$set": bson.M{"createdAt": now}})
+			// }
+			if ttc.RequestId != "" {
+				id, _ := primitive.ObjectIDFromHex(ttc.RequestId)
+				db.GetCollection(commondb, "transfers").FindOneAndDelete(context.Background(), bson.M{"_id": id})
+			}
+
+			switch froms := ttc.From.(type) {
+			case []string:
+				for _, from := range froms {
+					finish(from, "OUT", confirmdata)
+
+				}
+			case string:
+				finish(froms, "OUT", confirmdata)
+			}
+
+			switch tos := ttc.To.(type) {
+			case []string:
+				for _, to := range tos {
+					finish(to, "OUT", confirmdata)
+				}
+			case string:
+				finish(tos, "OUT", confirmdata)
+			}
+
+		} else {
+
+			switch froms := ttc.From.(type) {
+
+			case []string:
+				for _, from := range froms {
+					confirm(from, "OUT", confirmedNum, confirmdata)
+
+				}
+			case string:
+				confirm(froms, "OUT", confirmedNum, confirmdata)
+			}
+
+			switch tos := ttc.To.(type) {
+			case []string:
+				for _, to := range tos {
+					confirm(to, "OUT", confirmedNum, confirmdata)
+				}
+			case string:
+				confirm(tos, "OUT", confirmedNum, confirmdata)
+			}
+		}
+		// tx.ID = ttc.ID
+		// tx.RequestId = ttc.RequestId
 	}
 
-	// 	const ts = Date.now()
-
-	// 	for (const tc of tcs) {
-	// 		try {
-	// 			const { blockHeight, requestId, from, to } = tc
-	// 			// 确认完毕
-	// 			const isFinish = blockHeight <= safeBlockNumber
-	// 			const confirmedNum = blockNumber - blockHeight + 1
-
-	// 			// console.log(tc.toObject(), isFinish, blockHeight, safeBlockNumber)
-
-	// 			if (isFinish) {
-	// 				// 1. 创建TransferFromChain
-	// 				let tfc
-	// 				try {
-	// 					// "$isolated": true
-	// 					tfc = await this.chaindb.models.TransferFromChain.findByIdAndUpdate(tc._id, { $set: tc.toObject() }, { upsert: true, new: true })
-	// 				} catch (e) {
-	// 					if (e.message.indexOf('E11000') >= 0) {
-	// 						this.logger.warn(e.message)
-	// 					}
-	// 				}
-	// 				// 2. 修改转账记录状态
-	// 				if (requestId) {
-	// 					await this.commdb.models.Transfer.findByIdAndUpdate(requestId, { $set: { code: 64, status: 'FINISH', updatedAt: ts }, $push: { logs: `confirm finish at ${ts}` } })
-	// 				}
-	// 				await this.chaindb.models.TransferConfirming.findByIdAndDelete(tc._id)
-	// 				const froms = Array.isArray(from) ? from : [from]
-	// 				for (const addr of froms) {
-	// 					const fromSubscribed = this.addressMap[addr]
-	// 					if (fromSubscribed) {
-	// 						await this._finish(fromSubscribed, addr, tfc, 'OUT')
-	// 					}
-	// 				}
-	// 				const tos = Array.isArray(to) ? to : [to]
-	// 				for (const addr of tos) {
-	// 					const toSubscribed = this.addressMap[addr]
-	// 					if (toSubscribed) {
-	// 						console.log('__toall finish(IN):', addr)
-	// 						await this._finish(toSubscribed, addr, tfc, 'IN')
-	// 					}
-	// 				}
-
-	// 				// 一笔交易, 钱包里还会包含一笔到from的找零
-	// 				if ((this.chainSymbol === 'BTC' || this.chainSymbol === 'LTC') && tc.outs && tc.outs.length > 0) {
-	// 					for (const out of tc.outs) {
-	// 						const o = tos.find(item => String(item) === String(out.address))
-	// 						if (!o || o.length === 0) {
-	// 							const toSubscribed = this.addressMap[out.address]
-	// 							if (toSubscribed) {
-	// 								console.log('__toall finish(IN)(From):', out.address)
-	// 								await this._finish(toSubscribed, out.address, tfc, 'IN')
-	// 							}
-	// 						}
-	// 					}
-	// 				}
-
-	// 				// 1. 删除待确认记录
-	// 				await this.chaindb.models.TransferConfirming.findByIdAndDelete(tc._id)
-	// 			} else {
-	// 				const froms = Array.isArray(from) ? from : [from]
-	// 				for (const addr of froms) {
-	// 					const fromSubscribed = this.addressMap[addr]
-	// 					if (fromSubscribed) {
-	// 						this.logger.info('__toall _confirm(OUT):', confirmedNum, blockNumber)
-	// 						await this._confirm(fromSubscribed, tc._id, 'OUT', confirmedNum, blockNumber)
-	// 					}
-	// 				}
-	// 				const tos = Array.isArray(to) ? to : [to]
-	// 				for (const addr of tos) {
-	// 					const toSubscribed = this.addressMap[addr]
-	// 					if (toSubscribed) {
-	// 						this.logger.info('__toall _confirm(IN):', confirmedNum, blockNumber)
-	// 						await this._confirm(toSubscribed, tc._id, 'IN', confirmedNum, blockNumber)
-	// 					}
-	// 				}
-	// 			}
-	// 		} catch (e) {
-	// 			this.logger.error('[DynastyThreadUtil:newBlockNotify]', e)
-	// 		}
-	// 	}
-	// } finally {
-	// 	// this.inProcess = false
-	// }
 }
 
 func onchain(address, inout string, tx models.TransferFromChain) {
@@ -881,7 +884,7 @@ func onchain(address, inout string, tx models.TransferFromChain) {
 		"status":  "TRANSFER_FROM_CHAIN",
 		"inout":   inout,
 		"address": address,
-		"record": map[string]string{
+		"record": map[string]interface{}{
 			"tfcId":     tx.ID.Hex(),
 			"chain":     tx.Chain,
 			"coin":      tx.Coin,
@@ -902,12 +905,32 @@ func onchain(address, inout string, tx models.TransferFromChain) {
 		notifyData["finish"] = true
 	}
 	for _, acc := range accountIds {
-		sendNotify("TRANSFER_ACTION", acc, address, notifyData) //TODO: _account
+		sendNotify("TRANSFER_ACTION", acc, address, notifyData)
 	}
 
 }
 
-func finish(address, inout string, tx map[string]string) {
+func confirm(address, inout string, confirmedNum interface{}, tx map[string]interface{}) {
+
+	accountIds := getSubscribeIds(address)
+
+	notifyData := map[string]interface{}{
+		"status":       "TRANSFER_CONFIRM",
+		"inout":        inout,
+		"address":      address,
+		"tfcId":        tx["id"],
+		"txid":         tx["txid"],
+		"confirmedNum": confirmedNum,
+	}
+	if inout == "OUT" {
+		notifyData["requestId"] = tx["requestId"]
+	}
+	for _, acc := range accountIds {
+		sendNotify("TRANSFER_ACTION", acc, address, notifyData)
+	}
+}
+
+func finish(address, inout string, tx map[string]interface{}) {
 
 	accountIds := getSubscribeIds(address)
 
@@ -922,12 +945,11 @@ func finish(address, inout string, tx map[string]string) {
 		notifyData["requestId"] = tx["requestId"]
 	}
 	for _, acc := range accountIds {
-		sendNotify("TRANSFER_ACTION", acc, address, notifyData) //TODO: _account
+		sendNotify("TRANSFER_ACTION", acc, address, notifyData)
 	}
 }
 
 func sendNotify(key, accountID, address string, data interface{}) {
-
 	// fmt.Println("sendNotify", key, accountID, address, data)
 	// mongo 取出来的有时会有“ " ”
 	accountID = strings.Trim(accountID, "\"")
@@ -935,7 +957,7 @@ func sendNotify(key, accountID, address string, data interface{}) {
 	_, err := db.GetCollection(commondb, "notifytasks").InsertOne(context.Background(), bson.M{"key": key, "data": data, "address": address, "_account": accountID})
 
 	if err != nil {
-		fmt.Println("通知 消息 存库失败", err)
+		logger.Error("通知 消息 存库失败", err)
 	}
 	// fmt.Println("insertresult", insertresult)
 }
@@ -951,7 +973,7 @@ func getSubscribeIds(address string) []string {
 
 	cursor, err := db.GetCollection(commondb, "subscribes").Find(context.Background(), bson.M{"addresses": address})
 	if err != nil {
-		fmt.Println("getSubscribeIds error", err)
+		logger.Error("getSubscribeIds error", err)
 	}
 	accountID := []string{}
 	defer cursor.Close(context.Background())

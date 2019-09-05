@@ -17,19 +17,19 @@ api:
 
 db:
     addr: "127.0.0.1:27017"
-    
 
 kafka:
     service:
         - "127.0.0.1:9092"
     topics:
-        - VCT_TRANSACTION
-        - VCT_TX
+        - BTC_TRANSACTION
+        - BTC_TX
     keys:
         - SUBMIT_TRANSFER
         - TX
 
 chain:
-    confirmedNumber: 0
+    confirmedNumber: 6
     commondb: "dynasty"
     chaindb: "btc"
+    fee: "https://bitcoinfees.earn.com/api/v1/fees/recommended"

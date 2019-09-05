@@ -2,6 +2,8 @@ package jrpc
 
 import (
 	"encoding/base64"
+	"io/ioutil"
+	"net/http"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/ybbus/jsonrpc"
@@ -13,12 +15,16 @@ type api struct {
 	baseURL  string
 	userName string
 	pwd      string
+	feeUrl   string
 }
 type ChainApi interface {
 	GetBlockHeight() (int64, error)
 	GetBlockInfo(int64) (map[string]interface{}, error)
 	CreateTransactionData(interface{}, interface{}) (interface{}, error)
-	SubmitTransactionData(interface{}) (interface{}, error)
+	SubmitTransactionData(interface{}) (string, error)
+
+	SetFeeUrl(string) ChainApi
+	GetFee() ([]byte, error)
 }
 
 type Response struct {
@@ -39,6 +45,12 @@ func NewChainAPi(url, userName, pwd string) ChainApi {
 		userName: userName,
 		pwd:      pwd,
 	}
+}
+
+func (u *api) SetFeeUrl(feeUrl string) ChainApi {
+
+	u.feeUrl = feeUrl
+	return u
 }
 
 func (u *api) getRpcClient() jsonrpc.RPCClient {
@@ -92,11 +104,26 @@ func (u *api) CreateTransactionData(input, output interface{}) (interface{}, err
 	return tx, nil
 }
 
-func (u *api) SubmitTransactionData(sign interface{}) (interface{}, error) {
-	var txid interface{}
+func (u *api) SubmitTransactionData(sign interface{}) (string, error) {
+	var txid string
 	err := u.getRpcClient().CallFor(&txid, "sendrawtransaction", sign)
+	if err != nil {
+		return "", err
+	}
+	return txid, nil
+}
+
+func (u *api) GetFee() ([]byte, error) {
+	//https://bitcoinfees.earn.com/api/v1/fees/recommended
+	res, err := http.Get(u.feeUrl)
 	if err != nil {
 		return nil, err
 	}
-	return txid, nil
+	defer res.Body.Close()
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return body, nil
 }

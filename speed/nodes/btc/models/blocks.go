@@ -17,11 +17,12 @@ type Blocks struct {
 	// "strippedsize": 931271,
 	// "time": 1567414541,
 
-	Height int64  `json:"height"`
-	Hash   string `json:"hash"`
-	Time   int    `json:"time"`
-	Txid   string `json:"txid"`
-	Tx     []TXs  `json:"tx"`
+	Height       int64  `json:"height"`
+	Hash         string `json:"hash"`
+	PreviousHash string `json:"previousblockhash"`
+	Time         int    `json:"time"`
+	Txid         string `json:"txid"`
+	Tx           []TXs  `json:"tx"`
 	// CreatedAt time.Time      `json:"height"`
 	// UpdatedAt time.Time      `json:"height"`
 }

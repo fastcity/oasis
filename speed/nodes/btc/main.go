@@ -168,6 +168,7 @@ func readAndParseTx(tx models.TXs, number int64) {
 
 	for _, vouts := range tx.Vout {
 		v := vouts["value"]
+
 		vountn := vouts["n"]
 
 		script := vouts["scriptPubKey"]
@@ -187,7 +188,7 @@ func readAndParseTx(tx models.TXs, number int64) {
 		}
 
 		where := bson.D{{"txid", txid}, {"vount", vountn}}
-		update := bson.M{"txid": txid, "address": address, "blockHeight": number, "vount": vountn, "value": v, "scriptPubKey": script}
+		update := bson.M{"txid": txid, "address": address, "blockHeight": number, "vount": vountn, "value": v, "locked": false, "scriptPubKey": script}
 
 		op := options.FindOneAndUpdate().SetUpsert(true)
 		si := db.GetCollection(chaindb, "utxos").FindOneAndUpdate(context.Background(), where, bson.M{"$set": update}, op)
@@ -317,7 +318,10 @@ func readAndParseBlock(number int64) {
 
 		db.GetCollection(chaindb, "transactions").FindOneAndUpdate(context.Background(), where, bson.M{"$set": transactions}, op)
 	}
-	kafka.SendMsg("TX", strings.ToUpper(chaindb)+"_TX", string(number))
+	// send := map[string]interface{}{
+	// 	"height": number,
+	// }
+	kafka.SendMsg("TX", strings.ToUpper(chaindb)+"_TX", number)
 	db.GetCollection(chaindb, "infos").FindOneAndUpdate(context.Background(), bson.M{}, bson.M{"$set": bson.M{"blockHeight": number}}, op)
 	// op := options.FindOneAndUpdate().SetUpsert(true)
 

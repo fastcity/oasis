@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -27,7 +28,7 @@ type KaInterface interface {
 	SetKeys([]string) KaInterface
 	AddKey(string, chan []byte) KaInterface
 	SetTopics([]string) KaInterface
-	SendMsg(string, string, string) error
+	SendMsg(string, string, interface{}) error
 	ReciveMsg(chan []byte)
 	GetKeyMsg(key string) chan []byte
 	Close()
@@ -98,11 +99,13 @@ func (k *kaModel) AddKey(key string, ch chan []byte) KaInterface {
 	return k
 }
 
-func (k *kaModel) SendMsg(key, topic, data string) error {
+func (k *kaModel) SendMsg(key, topic string, data interface{}) error {
+
+	d, _ := json.Marshal(data)
 	msg := &sarama.ProducerMessage{
 		Topic: topic,
 		Key:   sarama.StringEncoder(key),
-		Value: sarama.StringEncoder(data),
+		Value: sarama.ByteEncoder(d),
 	}
 
 	// defer client.Close()
