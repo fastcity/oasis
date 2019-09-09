@@ -17,6 +17,7 @@ type api struct {
 type ChainApi interface {
 	GetBlockHeight() (int64, error)
 	GetBlockInfo(int64, interface{}) error
+	GetTransactionReceipt(string, interface{}) error
 	CreateTransactionData(interface{}, interface{}) (interface{}, error)
 	SubmitTransactionData(interface{}) (interface{}, error)
 }
@@ -64,16 +65,29 @@ func (u *api) GetBlockHeight() (height int64, err error) {
 	// reply = reply[2:]
 	h, err := strconv.ParseInt(reply, 0, 32) ////0x4d1a35 写 0 后 他自己判断去除前面的0x
 
-	return h, nil
+	return h, err
 }
 
-func (u *api) GetBlockInfo(height int64, txData interface{}) error {
+func (u *api) GetBlockInfo(height int64, info interface{}) error {
 
-	var hashdata interface{}
+	// var data interface{}
 	h := strconv.FormatInt(height, 16)
 	h = "0x" + h
 
-	err := u.getRpcClient().CallFor(&hashdata, "eth_getBlockByNumber", h, true)
+	err := u.getRpcClient().CallFor(&info, "eth_getBlockByNumber", h, true)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// 根据hash 查询交易
+func (u *api) GetTransactionReceipt(hash string, txData interface{}) error {
+
+	// var hashdata interface{}
+
+	err := u.getRpcClient().CallFor(&txData, "eth_getTransactionReceipt", hash)
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@ import (
 	"century/oasis/builder/nodes/btc/jrpc"
 	"century/oasis/builder/nodes/btc/models"
 	"century/oasis/builder/nodes/util"
+	"math/big"
 
 	"github.com/shopspring/decimal"
 
@@ -161,79 +162,71 @@ func escapeString(str, e string) {
 
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 	// fmt.Println("createTransactionDataHandler------")
-	// type transfer struct {
-	// 	Chain     string
-	// 	Coin      string
-	// 	From      string `json:"from"`
-	// 	To        string
-	// 	Value     string
-	// 	Amount    *big.Int
-	// 	TokenKey  string
-	// 	RequestID string `json:"requestId"`
-	// }
-	// res := &Result{}
-	// defer func(res *Result) {
-	// 	w.Header().Add("Content-Type", "application/json")
-	// 	ba, err := json.Marshal(res)
-	// 	if err != nil {
-	// 		res.Code = 40000
-	// 		res.Msg = err.Error()
-	// 	}
-	// 	w.Write(ba)
-	// }(res)
+	type transfer struct {
+		Chain  string
+		Coin   string
+		From   string `json:"from"`
+		To     string
+		Value  string
+		Amount *big.Int
+		// TokenKey  string
+		RequestID string `json:"requestId"`
+	}
+	res := &Result{}
+	defer func(res *Result) {
+		w.Header().Add("Content-Type", "application/json")
+		ba, err := json.Marshal(res)
+		if err != nil {
+			res.Code = 40000
+			res.Msg = err.Error()
+		}
+		w.Write(ba)
+	}(res)
 
-	// if r.Method == http.MethodPost {
-	// 	fmt.Println("r.Header", r.Header)
-	// 	tf := &transfer{}
+	if r.Method == http.MethodPost {
+		fmt.Println("r.Header", r.Header)
+		tf := &transfer{}
 
-	// 	fmt.Println(`r.Header.Get("Content-Type")`, r.Header.Get("Content-Type"))
-	// 	switch r.Header.Get("Content-Type") {
-	// 	case "application/json":
-	// 		body, _ := ioutil.ReadAll(r.Body)
-	// 		err := json.Unmarshal(body, tf)
-	// 		if err != nil {
-	// 			res.Code = 40000
-	// 			res.Msg = err.Error()
-	// 			// ba, _ := json.Marshal(res)
-	// 			// w.Write(ba)
-	// 			return
-	// 		}
-	// 		// str, _ := jsonparser.GetString(body, "from")
-	// 		// fmt.Println("from", str)
-	// 	case "application/x-www-form-urlencoded":
-	// 		tf.From = r.PostFormValue("from")
-	// 		tf.To = r.PostFormValue("to")
-	// 		tf.TokenKey = r.PostFormValue("tokenKey")
-	// 		tf.RequestID = r.PostFormValue("requestId")
-	// 		tf.Value = r.PostFormValue("value")
+		fmt.Println(`r.Header.Get("Content-Type")`, r.Header.Get("Content-Type"))
+		switch r.Header.Get("Content-Type") {
+		case "application/json":
+			body, _ := ioutil.ReadAll(r.Body)
+			err := json.Unmarshal(body, tf)
+			if err != nil {
+				res.Code = 40000
+				res.Msg = err.Error()
+				// ba, _ := json.Marshal(res)
+				// w.Write(ba)
+				return
+			}
+			// str, _ := jsonparser.GetString(body, "from")
+			// fmt.Println("from", str)
+		case "application/x-www-form-urlencoded":
+			tf.From = r.PostFormValue("from")
+			tf.To = r.PostFormValue("to")
+			tf.TokenKey = r.PostFormValue("tokenKey")
+			tf.RequestID = r.PostFormValue("requestId")
+			tf.Value = r.PostFormValue("value")
 
-	// 	default:
-	// 		w.WriteHeader(406)
-	// 		res.Code = 406
-	// 		res.Msg = "not support Content-Type"
-	// 		// ba, _ := json.Marshal(res)
-	// 		// w.Write(ba)
-	// 		return
+		default:
+			w.WriteHeader(406)
+			res.Code = 406
+			res.Msg = "not support Content-Type"
+			return
 
-	// 	}
-	// 	amount, ok := big.NewInt(0).SetString(tf.Value, 0)
+		}
+		amount, ok := big.NewInt(0).SetString(tf.Value, 0)
 
-	// 	if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
-	// 		// s.NormalErrorF(rw, 0, "Invalid amount")
-	// 		res.Code = 40000
-	// 		res.Msg = "Invalid amount"
-	// 		// ba, _ := json.Marshal(res)
-	// 		// w.Write(ba)
-	// 		return
-	// 	}
-	// 	tf.Amount = amount
+		if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
+			res.Code = 40000
+			res.Msg = "Invalid amount"
+			return
+		}
+		tf.Amount = amount
 
-	// 	if tf.TokenKey == "" || tf.TokenKey == "-" {
-	// 		tf.Coin = "VCT"
-	// 		tf.TokenKey = "-"
-	// 	} else {
-	// 		tf.Coin = "VCT_TOKEN"
-	// 	}
+		tf.Coin = chainSymbol
+			tf.TokenKey = "-"
+	
 
 	// 	_, err := db.GetCollection(commondb, "transfertochains").InsertOne(context.Background(),
 	// 		bson.M{"chain": "VCT", "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey, "value": tf.Value, "requestId": tf.RequestID})

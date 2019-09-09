@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buger/jsonparser"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
@@ -149,175 +148,71 @@ func isNewBlockAvalible(number int64) bool {
 
 func getBlockInfo(number int64, txData interface{}) error {
 	return chainConf.GetBlockInfo(number, txData)
-
-	// err := chainConf.GetBlockInfo(number, txData)
-	// if err != nil {
-	// 	logger.Error("getBlockInfo err", number, err)
-	// 	return nil
-	// }
-	// return b
 }
 
-func readAndParseTx(tx models.TXs, number int64) {
-	// bytes, err := json.Marshal(tx)
+func getBlockInfoByHash(hash string, info interface{}) error {
+	return chainConf.GetTransactionReceipt(hash, info)
+}
 
-	// if err != nil {
-	// 	logger.Error("txid paser error:", err)
-	// }
-	txid := tx.Txid
+func parseTx(txHex *models.TransactionHex, number int64) {
 
-	for _, vouts := range tx.Vout {
-		v := vouts["value"]
+	var txHexM models.TransactionHex
 
-		vountn := vouts["n"]
-
-		script := vouts["scriptPubKey"]
-
-		// scs := script.(map[string]interface{})
-		// if addresses, ok := scs["addresses"]; ok {
-		// 	addrss := addresses.([]interface{})
-		// 	if len(addrss) > 0 {
-		// 		address := addrss[0]
-		// 		fmt.Println(address)
-		// 	}
-		// }
-		sc, _ := json.Marshal(script)
-		address, err := jsonparser.GetString(sc, "addresses", "[0]")
-		if err != nil && err != jsonparser.KeyPathNotFoundError {
-			logger.Error("jsonparser.GetString vout-->scriptPubKey--->addresses [0] error", err)
-		}
-
-		where := bson.D{{"txid", txid}, {"vount", vountn}}
-		update := bson.M{"txid": txid, "address": address, "blockHeight": number, "vount": vountn, "value": v, "locked": false, "scriptPubKey": script}
-
-		op := options.FindOneAndUpdate().SetUpsert(true)
-		si := db.GetCollection(chaindb, "utxos").FindOneAndUpdate(context.Background(), where, bson.M{"$set": update}, op)
-		if si.Err() != nil {
-			logger.Error("utxos FindOneAndUpdate error", si.Err())
-		}
+	logger.Debug("parseTx----> getBlockInfoByHash txid:", txHex.Txid)
+	err := getBlockInfoByHash(txHex.Txid, &txHexM)
+	if err != nil {
+		logger.Error("parseTx----> getBlockInfoByHash error:", err)
 	}
+	txHex.TokenKey = txHexM.TokenKey
+	txHex.GasUsed = txHexM.GasUsed
+	txHex.Status = txHexM.Status
+	txHex.Logs = txHexM.Logs
 
-	for _, vins := range tx.Vin {
+	raw := txHex.HexToRaw()
 
-		intxid := vins["txid"]
-		vout := vins["vout"]
-		where := bson.D{{"txid", intxid}, {"vout", vout}}
-		db.GetCollection(chaindb, "utxos").FindOneAndDelete(context.Background(), where)
-	}
+	op := options.FindOneAndUpdate().SetUpsert(true)
+	where := bson.M{"txid": txHex.Txid}
+	db.GetCollection(chaindb, "transactions").FindOneAndUpdate(context.Background(), where, bson.M{"$set": raw}, op)
 
-	// jsonparser.ArrayEach(bytes, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-	// 	v, err := jsonparser.GetFloat(value, "value")
-	// 	if err != nil {
-	// 		logger.Error("jsonparser.GetString vout-->value error", err)
-	// 	}
-	// 	vountn, err := jsonparser.GetInt(value, "n")
-	// 	if err != nil {
-	// 		logger.Error("jsonparser.GetString vout-->scriptPubKey--->addresses [0] error", err)
-	// 	}
-	// 	address, err := jsonparser.GetString(value, "scriptPubKey", "addresses", "[0]")
-	// 	if err != nil {
-	// 		logger.Error("jsonparser.GetString vout-->scriptPubKey--->addresses [0] error", err)
-	// 	}
-
-	// 	var script map[string]interface{}
-
-	// 	scr, _, _, err := jsonparser.Get(value, "scriptPubKey")
-	// 	if err != nil {
-	// 		logger.Error("vout get scriptPubKey error:", err)
-	// 	}
-
-	// 	err = json.Unmarshal(scr, &script)
-	// 	if err != nil {
-	// 		logger.Error("scriptPubKey json error:", err)
-	// 	}
-	// 	where := bson.D{{"txid", txid}, {"vount", vountn}}
-	// 	update := bson.M{"txid": txid, "address": address, "blockHeight": number, "vount": vountn, "value": v, "scriptPubKey": script}
-
-	// 	op := options.FindOneAndUpdate().SetUpsert(true)
-	// 	si := db.GetCollection(chaindb, "utxos").FindOneAndUpdate(context.Background(), where, bson.M{"$set": update}, op)
-	// 	if si.Err() != nil {
-	// 		logger.Error("utxos FindOneAndUpdate error", si.Err())
-	// 	}
-
-	// }, "vout")
-	// logger.Debug("----txid---------over:", txid)
-
-	// jsonparser.ArrayEach(bytes, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-	// 	intxid, err := jsonparser.GetString(value, "txid")
-	// 	if err != nil && err != jsonparser.KeyPathNotFoundError {
-	// 		logger.Error("jsonparser.GetString vin------>txid error:", err, dataType.String())
-	// 	}
-	// 	vout, err := jsonparser.GetInt(value, "vout")
-	// 	if err != nil && err != jsonparser.KeyPathNotFoundError {
-	// 		logger.Error("jsonparser.GetString vin------>vout error:", err, dataType.String())
-	// 	}
-
-	// 	where := bson.D{{"txid", intxid}, {"vout", vout}}
-	// 	db.GetCollection(chaindb, "utxos").FindOneAndDelete(context.Background(), where)
-	// }, "vin")
-
-	// curor, err := db.GetCollection(chaindb, "utxos").Find(context.Background(), bson.M{"txid": bson.M{"$in": bson.A{intxids}}})
-
-	// if err != nil {
-	// 	logger.Error("utxos find ", intxids, "error:", err)
-	// }
-
-	// for curor.Next(context.Background()) {
-
-	// }
-
-	// const vin_utxos = await this.db.models.Utxo.find({ txid: { $in: vin_txids } })
-	// if (vin_utxos && vin_utxos.length > 0) {
-	// 	newVins = vins.map(vin => {
-	// 		return vin_utxos.find(p => {
-	// 			return p.txid === vin.txid && p.vout == vin.vout
-	// 		})
-	// 	})
-	// 	newVins = newVins.filter(p => (p != null || p != undefined))
-	// }
-
+	logger.Debug("parseTx----> getBlockInfoByHash get txHex", txHex)
 }
 
 func readAndParseBlock(number int64) {
 	logger.Debug("--------------------------start paser height:", number)
 
-	blockInfos := models.Blocks{}
+	blockInfosHex := models.BlocksHex{}
 
-	getBlockInfo(number, &blockInfos)
+	getBlockInfo(number, &blockInfosHex)
 
+	// blockInfos := blockInfosHex.HexToRaw()
 	// 判断回滚?
-
-	// txs := blockInfo.Tx
-	// time := blockInfos["time"]
 
 	op := options.FindOneAndUpdate().SetUpsert(true)
 
-	for _, tx := range blockInfos.Tx {
-		readAndParseTx(tx, number)
+	for _, tx := range blockInfosHex.Transactions {
+		parseTx(&tx, number)
 
-		// for _, v := range tx.Vin {
-		// 	vi := models.Vins{}
-		// 	json.Unmarshal(v, &vi)
-		// 	fmt.Println(vi)
-		// }
-
-		transactions := models.Transaction{
-			BlockHash:   tx.Hash,
-			BlockHeight: number,
-			BlockTime:   blockInfos.Time,
-			Txid:        tx.Txid,
-			Size:        tx.Size,
-			Version:     tx.Version,
-			Weight:      tx.Weight,
-			Vsize:       tx.Vsize,
-			Vins:        tx.Vin,
-			Vouts:       tx.Vout,
-		}
-
-		where := bson.M{"txid": tx.Txid}
-
-		db.GetCollection(chaindb, "transactions").FindOneAndUpdate(context.Background(), where, bson.M{"$set": transactions}, op)
 	}
+	// for _, tx := range blockInfos.Tx {
+	// 	readAndParseTx(tx, number)
+
+	// 	transactions := models.Transaction{
+	// 		BlockHash:   tx.Hash,
+	// 		BlockHeight: number,
+	// 		BlockTime:   blockInfos.Time,
+	// 		Txid:        tx.Txid,
+	// 		Size:        tx.Size,
+	// 		Version:     tx.Version,
+	// 		Weight:      tx.Weight,
+	// 		Vsize:       tx.Vsize,
+	// 		Vins:        tx.Vin,
+	// 		Vouts:       tx.Vout,
+	// 	}
+
+	// 	where := bson.M{"txid": tx.Txid}
+
+	// 	db.GetCollection(chaindb, "transactions").FindOneAndUpdate(context.Background(), where, bson.M{"$set": transactions}, op)
+	// }
 
 	// if kafka != nil {
 	// 	kafka.SendMsg("TX", strings.ToUpper(chaindb)+"_TX", number)
