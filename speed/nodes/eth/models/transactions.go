@@ -2,6 +2,8 @@ package models
 
 import (
 	"strconv"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Transaction struct {
@@ -64,22 +66,22 @@ type Transaction struct {
 	// "v": "0x1c",
 	// "value": "0x0"
 
-	BlockHeight      int64         `json:"blockNumber" bson:"blockHeight"`
-	BlockTime        int64         `json:"blockTime" bson:"blockTime"`
-	BlockHash        string        `json:"blockHash" bson:"blockHash"`
-	Txid             string        `json:"hash" bson:"txid"`
-	From             string        `json:"from" bson:"from"`
-	To               string        `json:"to" bson:"to"`
-	Value            int64         `json:"value" bson:"value"`
-	TokenKey         string        `json:"contractAddress" bason:"tokenKey"`
-	Gas              string        `json:"gas"  bson:"gas"`
-	GasPrice         string        `json:"gasPrice"  bson:"gasPrice"`
-	GasUsed          int64         `json:"gasUsed"  bson:"gasUsed"`
-	Nonce            int64         `json:"nonce"  bson:"nonce"`
-	Input            string        `json:"input"  bson:"input"`
-	TransactionIndex string        `json:"transactionIndex"  bson:"transactionIndex"`
-	Logs             []interface{} `json:"logs" bson:"logs"`
-	Status           string        `json:"status" bson:"status"`
+	BlockHeight      int64              `json:"blockNumber" bson:"blockHeight"`
+	BlockTime        primitive.DateTime `json:"blockTime" bson:"blockTime"`
+	BlockHash        string             `json:"blockHash" bson:"blockHash"`
+	Txid             string             `json:"hash" bson:"txid"`
+	From             string             `json:"from" bson:"from"`
+	To               string             `json:"to" bson:"to"`
+	Value            int64              `json:"value" bson:"value"`
+	TokenKey         string             `json:"contractAddress" bason:"tokenKey"`
+	Gas              string             `json:"gas"  bson:"gas"`
+	GasPrice         string             `json:"gasPrice"  bson:"gasPrice"`
+	GasUsed          int64              `json:"gasUsed"  bson:"gasUsed"`
+	Nonce            int64              `json:"nonce"  bson:"nonce"`
+	Input            string             `json:"input"  bson:"input"`
+	TransactionIndex string             `json:"transactionIndex"  bson:"transactionIndex"`
+	Logs             []interface{}      `json:"logs" bson:"logs"`
+	Status           string             `json:"status" bson:"status"`
 }
 
 type TransactionHex struct {
@@ -104,27 +106,34 @@ type TransactionHex struct {
 func (th *TransactionHex) HexToRaw() Transaction {
 	tx := Transaction{}
 
-	h, err := strconv.ParseInt(th.BlockHeight, 0, 32) ////0x4d1a35 写 0 后 他自己判断去除前面的0x
+	h, err := strconv.ParseInt(th.BlockHeight, 0, 32) // 写 0 后 他自己判断去除前面的0x
 	if err != nil {
 
 	}
 
 	tx.BlockHeight = h
 
-	gu, err := strconv.ParseInt(th.GasUsed, 0, 32) ////0x4d1a35 写 0 后 他自己判断去除前面的0x
+	gu, err := strconv.ParseInt(th.GasUsed, 0, 32) // 写 0 后 他自己判断去除前面的0x
 	if err != nil {
 
 	}
 
 	tx.GasUsed = gu
 
-	nonce, err := strconv.ParseInt(th.Nonce, 0, 32) ////0x4d1a35 写 0 后 他自己判断去除前面的0x
+	nonce, err := strconv.ParseInt(th.Nonce, 0, 32) // 写 0 后 他自己判断去除前面的0x
 	if err != nil {
 
 	}
 
 	tx.Nonce = nonce
 
+	time, err := strconv.ParseInt(th.BlockTime, 0, 32) // 写 0 后 他自己判断去除前面的0x
+	if err != nil {
+
+	}
+
+	tx.BlockTime = primitive.DateTime(time * 1000)
+	tx.BlockHash = th.BlockHash
 	tx.Txid = th.Txid
 	tx.From = th.From
 	tx.To = th.To

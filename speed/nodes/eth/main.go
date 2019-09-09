@@ -190,6 +190,7 @@ func readAndParseBlock(number int64) {
 	op := options.FindOneAndUpdate().SetUpsert(true)
 
 	for _, tx := range blockInfosHex.Transactions {
+		tx.BlockTime = blockInfosHex.Timestamp
 		parseTx(&tx, number)
 
 	}
