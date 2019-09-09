@@ -17,6 +17,7 @@ type api struct {
 type ChainApi interface {
 	GetBlockHeight() (int64, error)
 	GetBlockInfo(int64, interface{}) error
+	GetBalance(string, int64) (string, error)
 	GetTransactionReceipt(string, interface{}) error
 	CreateTransactionData(interface{}, interface{}) (interface{}, error)
 	SubmitTransactionData(interface{}) (interface{}, error)
@@ -74,24 +75,31 @@ func (u *api) GetBlockInfo(height int64, info interface{}) error {
 	h = "0x" + h
 
 	err := u.getRpcClient().CallFor(&info, "eth_getBlockByNumber", h, true)
-	if err != nil {
-		return err
+
+	return err
+}
+
+func (u *api) GetBalance(address string, height int64) (string, error) {
+	h := ""
+
+	if height < 0 {
+		h = "latest"
+	} else {
+		h = strconv.FormatInt(height, 16)
+		h = "0x" + h
 	}
 
-	return nil
+	var balance string
+	err := u.getRpcClient().CallFor(&balance, "eth_getBalance", address, h) // h 块高或者 "latest", "earliest" 或 "pending"
+
+	return balance, err
 }
 
 // 根据hash 查询交易
 func (u *api) GetTransactionReceipt(hash string, txData interface{}) error {
-
-	// var hashdata interface{}
-
 	err := u.getRpcClient().CallFor(&txData, "eth_getTransactionReceipt", hash)
-	if err != nil {
-		return err
-	}
 
-	return nil
+	return err
 }
 
 // createTransactionData 创建未签名事务

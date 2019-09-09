@@ -363,69 +363,30 @@ func getBalance(w http.ResponseWriter, r *http.Request) {
 		w.Write(ba)
 	}(res)
 
+	// ba, _ := json.Marshal(res)
 	address := r.FormValue("address")
 	fmt.Println("-------------- getBalance", address)
 	if address == "" {
 		res.Code = 40000
 		res.Msg = "address empty"
-
 		return
 	}
-	where := bson.D{{"address", address}}
 
-	if currentBlockNumber > 0 {
-		where = bson.D{{"address", address}, {"blockHeight", bson.M{"$lt": currentBlockNumber}}}
+	b, err := chainConf.GetBalance(address, -1)
+	if err != nil {
+		res.Code = 40000
+		res.Msg = err.Error()
+		return
 	}
-	result, _ := db.GetCollection(chaindb, "utxos").Find(context.Background(), where)
 
-	b := 0
-
-	for result.Next(context.Background()) {
-		var utxo struct {
-			Value int `bson:"value"` // TODO:小数？
-		}
-		result.Decode(&utxo)
-		b = b + utxo.Value
-	}
+	bb, _ := strconv.ParseInt(b, 0, 32)
 
 	res.Code = 0
-	res.Data = map[interface{}]interface{}{
-		"total": b,
+	res.Data = map[string]interface{}{
+		"total": string(bb),
 	}
-	return
 
-	// ba, _ := json.Marshal(res)
-	// address := r.FormValue("address")
-	// fmt.Println("-------------- getBalance", address)
-	// if address == "" {
-	// 	res := &Result{
-	// 		Code: 40000,
-	// 		Msg:  "address empty",
-	// 	}
-	// 	ba, _ := json.Marshal(res)
-	// 	w.Write(ba)
-	// 	return
-	// }
-	// b, err := chainConf.GetBalance(address)
-	// if err != nil {
-	// 	res := &Result{
-	// 		Code: 40000,
-	// 		Msg:  err.Error(),
-	// 	}
-	// 	ba, _ := json.Marshal(res)
-	// 	w.Write(ba)
-	// 	return
-	// }
-
-	// res := &Result{
-	// 	Code: 0,
-	// 	Data: map[interface{}]interface{}{
-	// 		"total": b,
-	// 	},
-	// }
-
-	// ba, _ := json.Marshal(res)
-	// // w.Write(ba)
+	// w.Write(ba)
 
 	// // // 允许来自所有域名请求
 	// w.Header().Add("Access-Control-Allow-Origin", "*")
