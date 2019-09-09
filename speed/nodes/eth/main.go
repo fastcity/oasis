@@ -194,32 +194,12 @@ func readAndParseBlock(number int64) {
 		parseTx(&tx, number)
 
 	}
-	// for _, tx := range blockInfos.Tx {
-	// 	readAndParseTx(tx, number)
 
-	// 	transactions := models.Transaction{
-	// 		BlockHash:   tx.Hash,
-	// 		BlockHeight: number,
-	// 		BlockTime:   blockInfos.Time,
-	// 		Txid:        tx.Txid,
-	// 		Size:        tx.Size,
-	// 		Version:     tx.Version,
-	// 		Weight:      tx.Weight,
-	// 		Vsize:       tx.Vsize,
-	// 		Vins:        tx.Vin,
-	// 		Vouts:       tx.Vout,
-	// 	}
-
-	// 	where := bson.M{"txid": tx.Txid}
-
-	// 	db.GetCollection(chaindb, "transactions").FindOneAndUpdate(context.Background(), where, bson.M{"$set": transactions}, op)
-	// }
-
-	// if kafka != nil {
-	// 	kafka.SendMsg("TX", strings.ToUpper(chaindb)+"_TX", number)
-	// } else {
-	// 	logger.Error("kafka error , can not send")
-	// }
+	if kafka != nil {
+		kafka.SendMsg("TX", strings.ToUpper(chaindb)+"_TX", number)
+	} else {
+		logger.Error("kafka error , can not send")
+	}
 
 	db.GetCollection(chaindb, "infos").FindOneAndUpdate(context.Background(), bson.M{}, bson.M{"$set": bson.M{"height": number}}, op)
 
