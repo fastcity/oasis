@@ -1,11 +1,9 @@
 package main
 
 import (
-	"century/oasis/builder/nodes/btc/models"
 	"century/oasis/builder/nodes/eth/jrpc"
+	"century/oasis/builder/nodes/eth/models"
 	"century/oasis/builder/nodes/util"
-
-	"github.com/shopspring/decimal"
 
 	"context"
 	"flag"
@@ -17,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buger/jsonparser"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
@@ -587,64 +584,82 @@ func paserTx(msg []byte) []models.TransferFromChain {
 		if err := curor.Decode(&tx); err != nil {
 			fmt.Println("get transferaction error", err)
 		}
-		tfc := models.TransferFromChain{
-			Chain:       chainSymbol,
-			Coin:        chainSymbol,
-			TokenKey:    "-",
-			BlockHeight: tx.BlockHeight,
-			BlockTime:   tx.BlockTime,
-			Txid:        tx.Txid,
-			Vins:        tx.Vins,
-			Vouts:       tx.Vouts,
-		}
+		if len(tx.Logs) > 0 {
+			for _, log := range tx.Logs {
 
-		tos := []string{}
-		froms := []string{}
-		for _, vins := range tx.Vins {
-			intxid := vins["txid"]
-			vout := vins["vout"]
-			where := bson.D{{"txid", intxid}, {"vout", vout}}
-			var ins map[string]interface{}
-			db.GetCollection(chaindb, "utxos").FindOne(context.Background(), where).Decode(&ins)
-			if address := getAddressByUTXO(ins); address != "" {
-				froms = append(froms, address)
+				if log["topics"] != nil {
+					switch topics := log["topics"].(type) {
+					case []string:
+						var data string
+
+						switch datas := log["data"].(type) {
+						case string:
+							data = datas
+						}
+
+						if len(topics) == 1 {
+							tfc := models.TransferFromChain{
+								Chain: "ETH",
+								Coin:  "ERC721",
+							}
+							tfc.From = data[26 : 26+40]
+							tfc.To = tx.To
+
+							tokenId := data[26+40+24+40+24:]
+
+							tfc.TokenKey = tx.To
+							tfc.BlockHeight = tx.BlockHeight
+							tfc.Txid = tx.Txid
+							tfc.Status = tx.Status
+							tfc.Value = strings.TrimRight(tokenId, "0")
+							tfc.BlockTime = tx.BlockTime
+
+							tfcs = append(tfcs, tfc)
+
+						} else {
+
+							tfc := models.TransferFromChain{
+								Chain: "ETH",
+								Coin:  "ERC721",
+							}
+							tfc.From = data[26 : 26+40]
+							tfc.To = tx.To
+
+							tokenId := data[26+40+24+40+24:]
+
+							tfc.TokenKey = tx.To
+							tfc.BlockHeight = tx.BlockHeight
+							tfc.Txid = tx.Txid
+							tfc.Status = tx.Status
+							tfc.Value = strings.TrimRight(tokenId, "0")
+							tfc.BlockTime = tx.BlockTime
+
+							tfcs = append(tfcs, tfc)
+						}
+					}
+				}
 			}
-		}
 
-		total := decimal.Zero
-		for _, vouts := range tx.Vouts {
-			v := vouts["value"]
-			vv := v.(float64)
-			total = total.Add(decimal.NewFromFloat(vv))
-			if address := getAddressByUTXO(vouts); address != "" {
-				tos = append(tos, address)
+			if tx.Value > 0 {
+				// 普通转账
+				tfc := models.TransferFromChain{
+					Chain: chainSymbol,
+					Coin:  chainSymbol,
+
+					BlockHeight: tx.BlockHeight,
+					BlockTime:   tx.BlockTime,
+					Txid:        tx.Txid,
+					From:        tx.From,
+					To:          tx.To,
+					TokenKey:    "-",
+					Value:       string(tx.Value),
+					Status:      tx.Status,
+				}
 			}
+
 		}
-
-		tfc.From = froms
-		tfc.To = tos
-		if len(froms) == 0 {
-			tfc.From = "coinbase"
-		}
-
-		tfc.Value = total.String()
-
-		tfcs = append(tfcs, tfc)
 	}
 	return tfcs
-}
-
-func getAddressByUTXO(vouts map[string]interface{}) string {
-
-	script := vouts["scriptPubKey"]
-	sc, _ := json.Marshal(script)
-	address, err := jsonparser.GetString(sc, "addresses", "[0]")
-	if err != nil && err != jsonparser.KeyPathNotFoundError {
-		logger.Error("jsonparser.GetString vout-->scriptPubKey--->addresses [0] error", err)
-	} else {
-		return address
-	}
-	return ""
 }
 
 func responseNewTx(tfc models.TransferFromChain) {
@@ -776,23 +791,9 @@ func newTranferFromChain(tfc models.TransferFromChain) {
 		db.GetCollection(chaindb, "transferconfirmings").FindOneAndUpdate(context.Background(), bson.M{"txid": tx.Txid}, updateStr, op)
 	}
 
-	switch froms := tx.From.(type) {
-	case []string:
-		for _, from := range froms {
-			onchain(from, "OUT", tx)
-		}
-	case string:
-		onchain(froms, "OUT", tx)
-	}
+	onchain(tx.From, "OUT", tx)
 
-	switch tos := tx.To.(type) {
-	case []string:
-		for _, to := range tos {
-			onchain(to, "OUT", tx)
-		}
-	case string:
-		onchain(tos, "OUT", tx)
-	}
+	onchain(tx.To, "IN", tx)
 }
 
 //

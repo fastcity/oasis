@@ -22,8 +22,8 @@ kafka:
     service:
         - "127.0.0.1:9092"
     topics:
-        - BTC_TRANSACTION
-        - BTC_TX
+        - ETH_TRANSACTION
+        - ETH_TX
     keys:
         - SUBMIT_TRANSFER
         - TX

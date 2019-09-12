@@ -1,5 +1,7 @@
 package models
 
+import "go.mongodb.org/mongo-driver/bson/primitive"
+
 type Transaction struct {
 
 	// hash: { type: String, required: true, unique: true }, // "0x9fc76417374aa880d4449a1f7f31ec597f00b1f6f3dd2d66f4c9c6c445836d8b",
@@ -22,18 +24,22 @@ type Transaction struct {
 	// logs: [],
 	// createdAt: { type: Number, default: Date.now },
 
-	BlockHeight int64  `json:"height" bson:"blockHeight"`
-	BlockTime   int64  `json:"blockTime" bson:"blockTime"`
-	BlockHash   string `json:"blockHash" bson:"blockHash"`
-	Nonce       string `json:"nonce"  bson:"nonce"`
-	Txid        string `json:"hash" bson:"txid"`
-	From        string `json:"from" bson:"from"`
-	To          string `json:"to" bson:"to"`
-	Value       string `json:"value" bson:"value"`
-	Gas         string `json:"gas"  bson:"gas"`
-	GasPrice    string `json:"gasPrice"  bson:"gasPrice"`
-	GasUsed     string `json:"gasUsed"  bson:"gasUsed"`
-	Status      string `json:"status" bson:"status"`
+	BlockHeight      int64                    `json:"blockNumber" bson:"blockHeight"`
+	BlockTime        primitive.DateTime       `json:"blockTime" bson:"blockTime"`
+	BlockHash        string                   `json:"blockHash" bson:"blockHash"`
+	Txid             string                   `json:"hash" bson:"txid"`
+	From             string                   `json:"from" bson:"from"`
+	To               string                   `json:"to" bson:"to"`
+	Value            int64                    `json:"value" bson:"value"`
+	TokenKey         string                   `json:"contractAddress" bason:"tokenKey"`
+	Gas              string                   `json:"gas"  bson:"gas"`
+	GasPrice         string                   `json:"gasPrice"  bson:"gasPrice"`
+	GasUsed          int64                    `json:"gasUsed"  bson:"gasUsed"`
+	Nonce            int64                    `json:"nonce"  bson:"nonce"`
+	Input            string                   `json:"input"  bson:"input"`
+	TransactionIndex string                   `json:"transactionIndex"  bson:"transactionIndex"`
+	Logs             []map[string]interface{} `json:"logs" bson:"logs"`
+	Status           string                   `json:"status" bson:"status"`
 }
 
 type TransactionHex struct {

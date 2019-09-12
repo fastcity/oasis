@@ -66,22 +66,22 @@ type Transaction struct {
 	// "v": "0x1c",
 	// "value": "0x0"
 
-	BlockHeight      int64              `json:"blockNumber" bson:"blockHeight"`
-	BlockTime        primitive.DateTime `json:"blockTime" bson:"blockTime"`
-	BlockHash        string             `json:"blockHash" bson:"blockHash"`
-	Txid             string             `json:"hash" bson:"txid"`
-	From             string             `json:"from" bson:"from"`
-	To               string             `json:"to" bson:"to"`
-	Value            int64              `json:"value" bson:"value"`
-	TokenKey         string             `json:"contractAddress" bason:"tokenKey"`
-	Gas              string             `json:"gas"  bson:"gas"`
-	GasPrice         string             `json:"gasPrice"  bson:"gasPrice"`
-	GasUsed          int64              `json:"gasUsed"  bson:"gasUsed"`
-	Nonce            int64              `json:"nonce"  bson:"nonce"`
-	Input            string             `json:"input"  bson:"input"`
-	TransactionIndex string             `json:"transactionIndex"  bson:"transactionIndex"`
-	Logs             []interface{}      `json:"logs" bson:"logs"`
-	Status           string             `json:"status" bson:"status"`
+	BlockHeight      int64                    `json:"blockNumber" bson:"blockHeight"`
+	BlockTime        primitive.DateTime       `json:"blockTime" bson:"blockTime"`
+	BlockHash        string                   `json:"blockHash" bson:"blockHash"`
+	Txid             string                   `json:"hash" bson:"txid"`
+	From             string                   `json:"from" bson:"from"`
+	To               string                   `json:"to" bson:"to"`
+	Value            int64                    `json:"value" bson:"value"`
+	TokenKey         string                   `json:"contractAddress" bason:"tokenKey"`
+	Gas              string                   `json:"gas"  bson:"gas"`
+	GasPrice         string                   `json:"gasPrice"  bson:"gasPrice"`
+	GasUsed          int64                    `json:"gasUsed"  bson:"gasUsed"`
+	Nonce            int64                    `json:"nonce"  bson:"nonce"`
+	Input            string                   `json:"input"  bson:"input"`
+	TransactionIndex string                   `json:"transactionIndex"  bson:"transactionIndex"`
+	Logs             []map[string]interface{} `json:"logs" bson:"logs"`
+	Status           string                   `json:"status" bson:"status"`
 }
 
 type TransactionHex struct {
