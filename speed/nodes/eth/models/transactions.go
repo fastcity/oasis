@@ -79,28 +79,28 @@ type Transaction struct {
 	GasUsed          int64                    `json:"gasUsed"  bson:"gasUsed"`
 	Nonce            int64                    `json:"nonce"  bson:"nonce"`
 	Input            string                   `json:"input"  bson:"input"`
-	TransactionIndex string                   `json:"transactionIndex"  bson:"transactionIndex"`
+	TransactionIndex int                      `json:"transactionIndex"  bson:"transactionIndex"`
 	Logs             []map[string]interface{} `json:"logs" bson:"logs"`
 	Status           string                   `json:"status" bson:"status"`
 }
 
 type TransactionHex struct {
-	BlockHeight      string        `json:"blockNumber" bson:"blockHeight"`
-	BlockTime        string        `json:"blockTime" bson:"blockTime"`
-	BlockHash        string        `json:"blockHash" bson:"blockHash"`
-	Txid             string        `json:"hash" bson:"txid"`
-	From             string        `json:"from" bson:"from"`
-	To               string        `json:"to" bson:"to"`
-	Value            string        `json:"value" bson:"value"`
-	TokenKey         string        `json:"contractAddress" bason:"tokenKey"`
-	Gas              string        `json:"gas"  bson:"gas"`
-	GasPrice         string        `json:"gasPrice"  bson:"gasPrice"`
-	GasUsed          string        `json:"gasUsed"  bson:"gasUsed"`
-	Nonce            string        `json:"nonce"  bson:"nonce"`
-	Input            string        `json:"input"  bson:"input"`
-	TransactionIndex string        `json:"transactionIndex"  bson:"transactionIndex"`
-	Logs             []interface{} `json:"logs" bson:"logs"`
-	Status           string        `json:"status" bson:"status"`
+	BlockHeight      string                   `json:"blockNumber" bson:"blockHeight"`
+	BlockTime        string                   `json:"blockTime" bson:"blockTime"`
+	BlockHash        string                   `json:"blockHash" bson:"blockHash"`
+	Txid             string                   `json:"hash" bson:"txid"`
+	From             string                   `json:"from" bson:"from"`
+	To               string                   `json:"to" bson:"to"`
+	Value            string                   `json:"value" bson:"value"`
+	TokenKey         string                   `json:"contractAddress" bason:"tokenKey"`
+	Gas              string                   `json:"gas"  bson:"gas"`
+	GasPrice         string                   `json:"gasPrice"  bson:"gasPrice"`
+	GasUsed          string                   `json:"gasUsed"  bson:"gasUsed"`
+	Nonce            string                   `json:"nonce"  bson:"nonce"`
+	Input            string                   `json:"input"  bson:"input"`
+	TransactionIndex string                   `json:"transactionIndex"  bson:"transactionIndex"`
+	Logs             []map[string]interface{} `json:"logs" bson:"logs"`
+	Status           string                   `json:"status" bson:"status"`
 }
 
 func (th *TransactionHex) HexToRaw() Transaction {
@@ -131,6 +131,12 @@ func (th *TransactionHex) HexToRaw() Transaction {
 	if err != nil {
 
 	}
+	index, err := strconv.ParseInt(th.TransactionIndex, 0, 32) // 写 0 后 他自己判断去除前面的0x
+	if err != nil {
+
+	}
+
+	tx.TransactionIndex = int(index)
 
 	tx.BlockTime = primitive.DateTime(time * 1000)
 	tx.BlockHash = th.BlockHash
@@ -138,10 +144,16 @@ func (th *TransactionHex) HexToRaw() Transaction {
 	tx.From = th.From
 	tx.To = th.To
 	tx.TokenKey = th.TokenKey
-	tx.TransactionIndex = th.TransactionIndex[2:]
+
 	tx.Input = th.Input
 	tx.Logs = th.Logs
-	tx.Status = th.Status[2:]
+
+	if th.Status == "" {
+		tx.Status = "1"
+	} else {
+		tx.Status = th.Status[2:]
+
+	}
 
 	return tx
 }

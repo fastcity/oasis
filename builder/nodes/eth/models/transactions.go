@@ -37,7 +37,7 @@ type Transaction struct {
 	GasUsed          int64                    `json:"gasUsed"  bson:"gasUsed"`
 	Nonce            int64                    `json:"nonce"  bson:"nonce"`
 	Input            string                   `json:"input"  bson:"input"`
-	TransactionIndex string                   `json:"transactionIndex"  bson:"transactionIndex"`
+	TransactionIndex int                      `json:"transactionIndex"  bson:"transactionIndex"`
 	Logs             []map[string]interface{} `json:"logs" bson:"logs"`
 	Status           string                   `json:"status" bson:"status"`
 }

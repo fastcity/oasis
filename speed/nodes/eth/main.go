@@ -196,6 +196,7 @@ func readAndParseBlock(number int64) {
 	}
 
 	if kafka != nil {
+		logger.Debug("kafka send : TX ", strings.ToUpper(chaindb)+"_TX  ", number)
 		kafka.SendMsg("TX", strings.ToUpper(chaindb)+"_TX", number)
 	} else {
 		logger.Error("kafka error , can not send")

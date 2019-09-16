@@ -4,6 +4,8 @@ import (
 	"century/oasis/builder/nodes/eth/jrpc"
 	"century/oasis/builder/nodes/eth/models"
 	"century/oasis/builder/nodes/util"
+	"encoding/hex"
+	"math/big"
 
 	"context"
 	"flag"
@@ -56,9 +58,9 @@ func main() {
 	// viper.SetConfigFile("")
 	beforeStart()
 
-	// go kafkaListing()
+	go kafkaListing()
 
-	// defer kafka.Close()
+	defer kafka.Close()
 	defer db.Close()
 
 	initRouter()
@@ -285,11 +287,16 @@ func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getBlockInfo(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("-------------- getBlockInfo")
+
+	height := r.FormValue("height")
+
+	h, _ := strconv.ParseInt(height, 10, 0)
+
+	fmt.Println("-------------- getBlockInfo", h)
 
 	var data map[string]interface{}
 
-	err := chainConf.GetBlockInfo(5058770, &data)
+	err := chainConf.GetBlockInfo(h, &data)
 	if err != nil {
 		fmt.Println("--------------err", err)
 	}
@@ -563,9 +570,22 @@ func txHand(msg []byte) {
 
 func paserTx(msg []byte) []models.TransferFromChain {
 	data := string(msg)
-	fmt.Println("-+++++++++", data)
+
+	// logTransferSig := []byte("Transfer(address,address,uint256)")
+	// LogApprovalSig := []byte("Approval(address,address,uint256)")
+	// logTransferSigHash := crypto.Keccak256Hash(logTransferSig)// transfer   0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
+	// logApprovalSigHash := crypto.Keccak256Hash(LogApprovalSig)// token 发行 0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925
+
+	//合约事件,目前只关注合约转账
+	eventTransfer := "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+	// eventApproval := "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925"
+
 	tfcs := []models.TransferFromChain{}
 	h, _ := strconv.ParseInt(data, 10, 0)
+
+	// h := big.NewInt(0).SetBytes(msg).Int64()
+
+	fmt.Println(chaindb, "-+++++++++", data, h)
 	// h := string(msg)
 	type res struct {
 		Result *models.Blocks `json:"result"`
@@ -584,80 +604,112 @@ func paserTx(msg []byte) []models.TransferFromChain {
 		if err := curor.Decode(&tx); err != nil {
 			fmt.Println("get transferaction error", err)
 		}
+
+		fmt.Println("len(tx.Logs)", len(tx.Logs))
 		if len(tx.Logs) > 0 {
 			for _, log := range tx.Logs {
-
-				if log["topics"] != nil {
-					switch topics := log["topics"].(type) {
-					case []string:
+				// fmt.Println(`log["topics"].(type):`, reflect.TypeOf(log["topics"]), ` log["data"].(type)`, reflect.TypeOf(log["data"])) // primitive.A
+				if logtopics, ok := log["topics"]; ok {
+					switch topics := logtopics.(type) {
+					case primitive.A:
 						var data string
 
 						switch datas := log["data"].(type) {
 						case string:
 							data = datas
+						default:
+							logger.Error("log[data]  error", log)
 						}
 
-						if len(topics) == 1 {
-							tfc := models.TransferFromChain{
-								Chain: "ETH",
-								Coin:  "ERC721",
+						if len(topics) > 1 {
+							switch topic := topics[0].(type) {
+							case string:
+								if strings.ToLower(topic) == eventTransfer { // 只关注转账事件
+									if len(topics) == 1 {
+										tfc := models.TransferFromChain{
+											Chain: "ETH",
+											Coin:  "ERC721",
+										}
+
+										tfc.From = "0x" + data[26:26+40]
+										tfc.To = "0x" + data[26+40+24:26+40+24+40]
+
+										tokenID := data[26+40+24+40+24:]
+
+										tfc.TokenKey = tx.To
+										tfc.BlockHeight = tx.BlockHeight
+										tfc.Txid = tx.Txid
+										tfc.Status = tx.Status
+										tfc.Value = strings.TrimRight(tokenID, "0")
+										tfc.BlockTime = tx.BlockTime
+
+										value, _ := strconv.ParseInt(strings.TrimRight(tokenID, "0"), 0, 32)
+
+										tfc.Value = string(value)
+
+										tfcs = append(tfcs, tfc)
+									} else {
+										// "address" : "0xFF603F43946A3A28DF5E6A73172555D8C8b02386", tokenKey ---> contract address
+										// "topics" : [
+										// 	"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+										// 	"0x0000000000000000000000006cc5f688a315f3dc28a7781717a9a798a59fda7b",  // from
+										// 	"0x000000000000000000000000932a764b48542d8d362f2a05e43388e0f548f7c8"   // to
+										// ],
+										// "data" : "0x000000000000000000000000000000000000000000000531d1d57a8605af8000", // value
+
+										tfc := models.TransferFromChain{
+											Chain: "ETH",
+											Coin:  "ERC20",
+										}
+
+										tfc.From = HexToAddr(topics[1])
+
+										tfc.To = HexToAddr(topics[2])
+
+										tfc.TokenKey = tx.To
+										tfc.BlockHeight = tx.BlockHeight
+										tfc.Txid = tx.Txid
+										tfc.Status = tx.Status
+										tfc.Value = strings.TrimRight(data[2:], "0")
+										tfc.BlockTime = tx.BlockTime
+
+										by, _ := hex.DecodeString(strings.TrimRight(data[2:], "0"))
+										value := big.NewInt(0).SetBytes(by)
+										tfc.Value = value.String()
+
+										tfcs = append(tfcs, tfc)
+									}
+
+								}
+							default:
+								logger.Error("contract get error topics [0]", topics[0])
 							}
-							tfc.From = data[26 : 26+40]
-							tfc.To = tx.To
 
-							tokenId := data[26+40+24+40+24:]
-
-							tfc.TokenKey = tx.To
-							tfc.BlockHeight = tx.BlockHeight
-							tfc.Txid = tx.Txid
-							tfc.Status = tx.Status
-							tfc.Value = strings.TrimRight(tokenId, "0")
-							tfc.BlockTime = tx.BlockTime
-
-							tfcs = append(tfcs, tfc)
-
-						} else {
-
-							tfc := models.TransferFromChain{
-								Chain: "ETH",
-								Coin:  "ERC721",
-							}
-							tfc.From = data[26 : 26+40]
-							tfc.To = tx.To
-
-							tokenId := data[26+40+24+40+24:]
-
-							tfc.TokenKey = tx.To
-							tfc.BlockHeight = tx.BlockHeight
-							tfc.Txid = tx.Txid
-							tfc.Status = tx.Status
-							tfc.Value = strings.TrimRight(tokenId, "0")
-							tfc.BlockTime = tx.BlockTime
-
-							tfcs = append(tfcs, tfc)
 						}
 					}
+				} else {
+					logger.Error("log not find topics", log)
 				}
 			}
-
-			if tx.Value > 0 {
-				// 普通转账
-				tfc := models.TransferFromChain{
-					Chain: chainSymbol,
-					Coin:  chainSymbol,
-
-					BlockHeight: tx.BlockHeight,
-					BlockTime:   tx.BlockTime,
-					Txid:        tx.Txid,
-					From:        tx.From,
-					To:          tx.To,
-					TokenKey:    "-",
-					Value:       string(tx.Value),
-					Status:      tx.Status,
-				}
-			}
-
 		}
+		if tx.Value > 0 {
+			// 普通转账
+			tfc := models.TransferFromChain{
+				Chain: "ETH",
+				Coin:  "ETH",
+
+				BlockHeight: tx.BlockHeight,
+				BlockTime:   tx.BlockTime,
+				Txid:        tx.Txid,
+				From:        tx.From,
+				To:          tx.To,
+				TokenKey:    "-",
+				Value:       string(tx.Value),
+				Status:      tx.Status,
+			}
+			tfcs = append(tfcs, tfc)
+		}
+
 	}
 	return tfcs
 }
@@ -846,10 +898,10 @@ func newBlockNotify(blockNumber string) {
 			switch tos := ttc.To.(type) {
 			case []string:
 				for _, to := range tos {
-					finish(to, "OUT", confirmdata)
+					finish(to, "IN", confirmdata)
 				}
 			case string:
-				finish(tos, "OUT", confirmdata)
+				finish(tos, "IN", confirmdata)
 			}
 
 		} else {
@@ -868,10 +920,10 @@ func newBlockNotify(blockNumber string) {
 			switch tos := ttc.To.(type) {
 			case []string:
 				for _, to := range tos {
-					confirm(to, "OUT", confirmedNum, confirmdata)
+					confirm(to, "IN", confirmedNum, confirmdata)
 				}
 			case string:
-				confirm(tos, "OUT", confirmedNum, confirmdata)
+				confirm(tos, "IN", confirmedNum, confirmdata)
 			}
 		}
 		// tx.ID = ttc.ID
@@ -984,4 +1036,19 @@ func getSubscribeIds(address string) []string {
 		accountID = append(accountID, id)
 	}
 	return accountID
+}
+
+// HexToAddr 转化为40个长度的等长地址
+func HexToAddr(hexAddr interface{}) string {
+	switch addr := hexAddr.(type) {
+	case string:
+		str := strings.TrimRight(addr, "0x")
+
+		str = str[len(str)-40:]
+
+		return "0x" + strings.ToLower(str)
+	default:
+		return ""
+	}
+
 }

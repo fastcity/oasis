@@ -31,5 +31,5 @@ kafka:
 chain:
     confirmedNumber: 6
     commondb: "dynasty"
-    chaindb: "btc"
+    chaindb: "eth"
     fee: "https://bitcoinfees.earn.com/api/v1/fees/recommended"
