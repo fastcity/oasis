@@ -5,6 +5,7 @@ import (
 	"century/oasis/builder/nodes/eth/models"
 	"century/oasis/builder/nodes/util"
 	"encoding/hex"
+	"io/ioutil"
 	"math/big"
 
 	"context"
@@ -161,114 +162,136 @@ func escapeString(str, e string) {
 
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 	// fmt.Println("createTransactionDataHandler------")
-	// type transfer struct {
-	// 	Chain  string
-	// 	Coin   string
-	// 	From   string `json:"from"`
-	// 	To     string
-	// 	Value  string
-	// 	Amount *big.Int
-	// 	// TokenKey  string
-	// 	RequestID string `json:"requestId"`
-	// }
-	// res := &Result{}
-	// defer func(res *Result) {
-	// 	w.Header().Add("Content-Type", "application/json")
-	// 	ba, err := json.Marshal(res)
-	// 	if err != nil {
-	// 		res.Code = 40000
-	// 		res.Msg = err.Error()
-	// 	}
-	// 	w.Write(ba)
-	// }(res)
+	type transfer struct {
+		Chain     string
+		Coin      string
+		From      string `json:"from"`
+		To        string
+		Value     string
+		Nonce     string
+		Amount    *big.Int
+		NonceBig  *big.Int
+		TokenKey  string
+		RequestID string `json:"requestId"`
+	}
+	res := &Result{}
+	defer func(res *Result) {
+		w.Header().Add("Content-Type", "application/json")
+		ba, err := json.Marshal(res)
+		if err != nil {
+			res.Code = 40000
+			res.Msg = err.Error()
+		}
+		w.Write(ba)
+	}(res)
 
-	// if r.Method == http.MethodPost {
-	// 	fmt.Println("r.Header", r.Header)
-	// 	tf := &transfer{}
+	if r.Method == http.MethodPost {
+		tf := &transfer{}
+		switch r.Header.Get("Content-Type") {
+		case "application/json":
+			body, _ := ioutil.ReadAll(r.Body)
+			err := json.Unmarshal(body, tf)
+			if err != nil {
+				res.Code = 40000
+				res.Msg = err.Error()
+				return
+			}
 
-	// 	fmt.Println(`r.Header.Get("Content-Type")`, r.Header.Get("Content-Type"))
-	// 	switch r.Header.Get("Content-Type") {
-	// 	case "application/json":
-	// 		body, _ := ioutil.ReadAll(r.Body)
-	// 		err := json.Unmarshal(body, tf)
-	// 		if err != nil {
-	// 			res.Code = 40000
-	// 			res.Msg = err.Error()
-	// 			// ba, _ := json.Marshal(res)
-	// 			// w.Write(ba)
-	// 			return
-	// 		}
-	// 		// str, _ := jsonparser.GetString(body, "from")
-	// 		// fmt.Println("from", str)
-	// 	case "application/x-www-form-urlencoded":
-	// 		tf.From = r.PostFormValue("from")
-	// 		tf.To = r.PostFormValue("to")
-	// 		tf.TokenKey = r.PostFormValue("tokenKey")
-	// 		tf.RequestID = r.PostFormValue("requestId")
-	// 		tf.Value = r.PostFormValue("value")
+		case "application/x-www-form-urlencoded":
+			tf.From = r.PostFormValue("from")
+			tf.To = r.PostFormValue("to")
+			tf.TokenKey = r.PostFormValue("tokenKey")
+			tf.RequestID = r.PostFormValue("requestId")
+			tf.Value = r.PostFormValue("value")
+			tf.Nonce = r.PostFormValue("nonce")
 
-	// 	default:
-	// 		w.WriteHeader(406)
-	// 		res.Code = 406
-	// 		res.Msg = "not support Content-Type"
-	// 		return
+		default:
+			w.WriteHeader(406)
+			res.Code = 406
+			res.Msg = "not support Content-Type"
+			return
+		}
 
-	// 	}
-	// 	amount, ok := big.NewInt(0).SetString(tf.Value, 0)
+		amount, ok := big.NewInt(0).SetString(tf.Value, 0)
 
-	// 	if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
-	// 		res.Code = 40000
-	// 		res.Msg = "Invalid amount"
-	// 		return
-	// 	}
-	// 	tf.Amount = amount
+		if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
+			res.Code = 40000
+			res.Msg = "Invalid amount"
+			return
+		}
+		tf.Amount = amount
 
-	// 	tf.Coin = chainSymbol
-	// 		tf.TokenKey = "-"
+		tf.Chain = chainSymbol
+		if tf.Coin == "ERC20" {
 
-	// 	_, err := db.GetCollection(commondb, "transfertochains").InsertOne(context.Background(),
-	// 		bson.M{"chain": "VCT", "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey, "value": tf.Value, "requestId": tf.RequestID})
+		} else {
+			tf.TokenKey = "-"
+		}
 
-	// 	if err != nil {
-	// 		fmt.Println("InsertOne transfertochains error", err)
-	// 	}
-	// 	// fmt.Println("insertresult", insertresult)
+		nonceChain, _ := chainConf.GetNonce(tf.From)
+		nonceChainInt := stringToBigint(nonceChain)
 
-	// 	// res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
-	// 	_, err = chainConf.CreateTransactionData(tf.From, tf.To, tf.TokenKey, tf.Amount)
-	// 	if err != nil {
-	// 		res.Code = 40000
-	// 		res.Msg = err.Error()
-	// 		// ba, _ := json.Marshal(res)
-	// 		// w.Write(ba)
-	// 		return
-	// 	}
-	// 	resp, err := chainConf.ToResponse()
-	// 	if err != nil {
-	// 		res.Code = 40000
-	// 		res.Msg = err.Error()
-	// 		// ba, _ := json.Marshal(res)
-	// 		// w.Write(ba)
-	// 		return
-	// 	}
-	// 	res.Code = 0
-	// 	res.Data = map[interface{}]interface{}{
-	// 		"txData": resp.Result,
-	// 	}
-	// 	fmt.Println("res", res)
+		if tf.Nonce != "" {
+			nonce, ok := big.NewInt(0).SetString(tf.Nonce, 0)
 
-	// 	// w.Header().Add("Content-Type", "application/json")
-	// 	// ba, _ := json.Marshal(res)
-	// 	// w.Write(ba)
-	// 	// fmt.Fprintln(w, string(ba))
-	// 	return
-	// }
-	// w.WriteHeader(405)
-	// res.Code = 405
-	// res.Msg = "method not allow"
-	// // ba, _ := json.Marshal(res)
-	// // w.Write(ba)
-	// return
+			if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
+				res.Code = 40000
+				res.Msg = "Invalid nonce"
+				return
+			}
+			tf.NonceBig = nonce
+
+			if nonceChainInt.Cmp(nonce) < 0 {
+				res.Code = 40000
+				res.Msg = "Invalid nonce"
+				return
+			}
+		}
+		// gas gasprice
+
+		// 	_, err := db.GetCollection(commondb, "transfertochains").InsertOne(context.Background(),
+		// 		bson.M{"chain": "VCT", "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey, "value": tf.Value, "requestId": tf.RequestID})
+
+		// 	if err != nil {
+		// 		fmt.Println("InsertOne transfertochains error", err)
+		// 	}
+		// 	// fmt.Println("insertresult", insertresult)
+
+		// 	// res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
+		// 	_, err = chainConf.CreateTransactionData(tf.From, tf.To, tf.TokenKey, tf.Amount)
+		// 	if err != nil {
+		// 		res.Code = 40000
+		// 		res.Msg = err.Error()
+		// 		// ba, _ := json.Marshal(res)
+		// 		// w.Write(ba)
+		// 		return
+		// 	}
+		// 	resp, err := chainConf.ToResponse()
+		// 	if err != nil {
+		// 		res.Code = 40000
+		// 		res.Msg = err.Error()
+		// 		// ba, _ := json.Marshal(res)
+		// 		// w.Write(ba)
+		// 		return
+		// 	}
+		// 	res.Code = 0
+		// 	res.Data = map[interface{}]interface{}{
+		// 		"txData": resp.Result,
+		// 	}
+		// 	fmt.Println("res", res)
+
+		// 	// w.Header().Add("Content-Type", "application/json")
+		// 	// ba, _ := json.Marshal(res)
+		// 	// w.Write(ba)
+		// 	// fmt.Fprintln(w, string(ba))
+		// 	return
+	}
+
+	w.WriteHeader(405)
+	res.Code = 405
+	res.Msg = "method not allow"
+
+	return
 }
 
 func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
@@ -1051,4 +1074,24 @@ func HexToAddr(hexAddr interface{}) string {
 		return ""
 	}
 
+}
+
+func stringToBigint(hex string) *big.Int {
+
+	base := 0
+	if strings.HasPrefix("0x", strings.ToLower(hex)) {
+		base = 16
+	}
+
+	n, _ := big.NewInt(0).SetString(hex, base)
+
+	return n
+
+}
+
+func towei(number *big.Int) *big.Int {
+
+	wei := big.NewInt(1000000000000000000)
+
+	return number.Mul(number, wei)
 }

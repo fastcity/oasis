@@ -18,9 +18,14 @@ type ChainApi interface {
 	GetBlockHeight() (int64, error)
 	GetBlockInfo(int64, interface{}) error
 	GetBalance(string, int64) (string, error)
+
 	GetTransactionReceipt(string, interface{}) error
 	CreateTransactionData(interface{}, interface{}) (interface{}, error)
 	SubmitTransactionData(interface{}) (interface{}, error)
+
+	GetNonce(string) (string, error)
+	GetGas(string) (string, error)
+	EstimateGas(params ...interface{}) (string, error)
 }
 
 type Response struct {
@@ -119,4 +124,37 @@ func (u *api) SubmitTransactionData(sign interface{}) (interface{}, error) {
 		return nil, err
 	}
 	return txid, nil
+}
+
+func (u *api) GetNonce(address string) (string, error) {
+	var count string
+	err := u.getRpcClient().CallFor(&count, "eth_getTransactionCount", address, "latest")
+	if err != nil {
+		return "", err
+	}
+
+	// nonce, _ := big.NewInt(0).SetString(count, 0) // 根据前缀自己选择
+
+	return count, nil
+}
+
+func (u *api) GetGasPrice(address string) (string, error) {
+	var price string
+	err := u.getRpcClient().CallFor(&price, "eth_gasPrice", address, "latest")
+	if err != nil {
+		return "", err
+	}
+
+	return price, nil
+}
+
+// EstimateGas 执行并估算一个交易需要的gas用量
+func (u *api) EstimateGas(params ...interface{}) (string, error) {
+	var gas string
+	err := u.getRpcClient().CallFor(&gas, "eth_estimateGas", params)
+	if err != nil {
+		return "", err
+	}
+
+	return gas, nil
 }
