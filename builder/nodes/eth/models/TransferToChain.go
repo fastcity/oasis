@@ -1,6 +1,10 @@
 package models
 
-import "go.mongodb.org/mongo-driver/bson/primitive"
+import (
+	"math/big"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
 
 type TransferToChain struct {
 	ID          primitive.ObjectID `bson:"_id"`
@@ -12,6 +16,7 @@ type TransferToChain struct {
 	To          string             `bson:"to"`
 	Value       string             `bson:"value"`
 	Txid        string             `bson:"txid"`
+	Fee         *big.Int           `bson:"fee"`
 	BlockHeight int64              `bson:"blockheight"`
 	BlockTime   string             `bson:"blocktime"`
 	CreatedAt   int64              `bson:"createdAt"`

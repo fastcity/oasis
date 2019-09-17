@@ -19,6 +19,7 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/shopspring/decimal"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -40,6 +41,8 @@ var (
 	chainSymbol        = "ETH"
 	confirmedNumber    int64
 	logger             *zap.SugaredLogger
+	wei                int64 = 1000000000000000000
+	gwei               int64 = 100000000
 )
 
 // Result 返回结果
@@ -172,6 +175,7 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		Amount    *big.Int
 		NonceBig  *big.Int
 		TokenKey  string
+		FeeRate   string `json:"feeRate"`
 		RequestID string `json:"requestId"`
 	}
 	res := &Result{}
@@ -204,6 +208,7 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 			tf.RequestID = r.PostFormValue("requestId")
 			tf.Value = r.PostFormValue("value")
 			tf.Nonce = r.PostFormValue("nonce")
+			tf.FeeRate = r.PostFormValue("feeRate")
 
 		default:
 			w.WriteHeader(406)
@@ -212,24 +217,31 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		amount, ok := big.NewInt(0).SetString(tf.Value, 0)
+		value64, err := decimal.NewFromString(tf.Value)
 
-		if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
+		if err != nil {
 			res.Code = 40000
-			res.Msg = "Invalid amount"
+			res.Msg = "Invalid amount" + err.Error()
 			return
 		}
+
+		value := value64.Mul(decimal.New(wei, 0))
+
+		amount := big.NewInt(value.IntPart())
+
 		tf.Amount = amount
 
 		tf.Chain = chainSymbol
 		if tf.Coin == "ERC20" {
-
-		} else {
-			tf.TokenKey = "-"
+			b, _ := json.Marshal(tf)
+			res = createERC20TransactionData(b)
+			return
 		}
+		tf.TokenKey = "-"
+		tf.Coin = "ETH"
 
 		nonceChain, _ := chainConf.GetNonce(tf.From)
-		nonceChainInt := stringToBigint(nonceChain)
+		nonceChainInt := hexToBigint(nonceChain)
 
 		if tf.Nonce != "" {
 			nonce, ok := big.NewInt(0).SetString(tf.Nonce, 0)
@@ -246,45 +258,66 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 				res.Msg = "Invalid nonce"
 				return
 			}
+		} else {
+			tf.NonceBig = nonceChainInt
 		}
-		// gas gasprice
+		var gasPrice *big.Int
 
-		// 	_, err := db.GetCollection(commondb, "transfertochains").InsertOne(context.Background(),
-		// 		bson.M{"chain": "VCT", "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey, "value": tf.Value, "requestId": tf.RequestID})
+		if tf.FeeRate == "" {
+			gasPriceA, _ := chainConf.GetGasPrice() // 单位 wei
+			gasPrice = hexToBigint(gasPriceA)
+			tf.FeeRate = gasPrice.String()
+		} else {
+			gasPriceD, err := decimal.NewFromString(tf.FeeRate)
 
-		// 	if err != nil {
-		// 		fmt.Println("InsertOne transfertochains error", err)
-		// 	}
-		// 	// fmt.Println("insertresult", insertresult)
+			if err != nil {
+				res.Code = 40000
+				res.Msg = "Invalid FeeRate" + err.Error()
+				return
+			}
 
-		// 	// res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
-		// 	_, err = chainConf.CreateTransactionData(tf.From, tf.To, tf.TokenKey, tf.Amount)
-		// 	if err != nil {
-		// 		res.Code = 40000
-		// 		res.Msg = err.Error()
-		// 		// ba, _ := json.Marshal(res)
-		// 		// w.Write(ba)
-		// 		return
-		// 	}
-		// 	resp, err := chainConf.ToResponse()
-		// 	if err != nil {
-		// 		res.Code = 40000
-		// 		res.Msg = err.Error()
-		// 		// ba, _ := json.Marshal(res)
-		// 		// w.Write(ba)
-		// 		return
-		// 	}
-		// 	res.Code = 0
-		// 	res.Data = map[interface{}]interface{}{
-		// 		"txData": resp.Result,
-		// 	}
-		// 	fmt.Println("res", res)
+			gasPrice = big.NewInt(gasPriceD.IntPart())
+			if gasPrice.Cmp(big.NewInt(200)) < 1 { // 用户传的可能是wei gwei 小于200 认为是gwei 否则认为为wei
+				gasPrice = gweitowei(gasPrice)
+			} else {
+				gasPrice, _ = big.NewInt(0).SetString(tf.FeeRate, 0)
+			}
 
-		// 	// w.Header().Add("Content-Type", "application/json")
-		// 	// ba, _ := json.Marshal(res)
-		// 	// w.Write(ba)
-		// 	// fmt.Fprintln(w, string(ba))
-		// 	return
+		}
+
+		gasStruct := map[string]string{
+			"from":  tf.From,
+			"to":    tf.To,
+			"value": bigToHex(tf.Amount),
+		}
+		gasHex, _ := chainConf.EstimateGas(gasStruct) // 单位 wei hex
+
+		gas := hexToBigint(gasHex)
+
+		fee := weitoEth(gas.Div(gas, gasPrice))
+
+		_, err = db.GetCollection(chaindb, "transfertochains").InsertOne(context.Background(),
+			bson.M{"chain": chainSymbol, "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey,
+				"value": tf.Value, "fee": fee, "requestId": tf.RequestID})
+
+		if err != nil {
+			logger.Error("InsertOne transfertochains error", err)
+		}
+
+		txData := map[string]interface{}{
+			"to":       tf.To,
+			"value":    bigToHex(tf.Amount),
+			"nonce":    bigToHex(tf.NonceBig),
+			"gasPrice": bigToHex(gasPrice),
+			"gas":      gasHex,
+			"data":     "",
+		}
+
+		res.Code = 0
+		res.Data = map[interface{}]interface{}{
+			"txData": txData,
+		}
+		return
 	}
 
 	w.WriteHeader(405)
@@ -292,6 +325,136 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 	res.Msg = "method not allow"
 
 	return
+}
+
+func createERC20TransactionData(body []byte) *Result {
+	type transfer struct {
+		Chain     string
+		Coin      string
+		From      string `json:"from"`
+		To        string
+		Value     string
+		Nonce     string
+		Amount    *big.Int
+		NonceBig  *big.Int
+		TokenKey  string
+		FeeRate   string `json:"feeRate"`
+		RequestID string `json:"requestId"`
+	}
+	res := &Result{}
+
+	tf := &transfer{}
+	err := json.Unmarshal(body, tf)
+	if err != nil {
+		res.Code = 40000
+		res.Msg = err.Error()
+		return res
+	}
+
+	value64, err := decimal.NewFromString(tf.Value)
+
+	if err != nil {
+		res.Code = 40000
+		res.Msg = "Invalid amount" + err.Error()
+		return res
+	}
+
+	value := value64.Mul(decimal.New(wei, 0))
+
+	amount := big.NewInt(value.IntPart())
+
+	tf.Amount = amount
+	tf.Chain = chainSymbol
+
+	nonceChain, _ := chainConf.GetNonce(tf.From)
+	nonceChainInt := hexToBigint(nonceChain)
+
+	if tf.Nonce != "" {
+		nonce, ok := big.NewInt(0).SetString(tf.Nonce, 0)
+
+		if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
+			res.Code = 40000
+			res.Msg = "Invalid nonce"
+			return res
+		}
+		tf.NonceBig = nonce
+
+		if nonceChainInt.Cmp(nonce) < 0 {
+			res.Code = 40000
+			res.Msg = "Invalid nonce"
+			return res
+		}
+	} else {
+		tf.NonceBig = nonceChainInt
+	}
+	var gasPrice *big.Int
+
+	if tf.FeeRate == "" {
+		gasPriceA, _ := chainConf.GetGasPrice() // 单位 wei
+		gasPrice = hexToBigint(gasPriceA)
+		tf.FeeRate = gasPrice.String()
+	} else {
+		gasPriceD, err := decimal.NewFromString(tf.FeeRate)
+
+		if err != nil {
+			res.Code = 40000
+			res.Msg = "Invalid FeeRate" + err.Error()
+			return res
+		}
+
+		gasPrice = big.NewInt(gasPriceD.IntPart())
+		if gasPrice.Cmp(big.NewInt(200)) < 1 { // 用户传的可能是wei gwei 小于200 认为是gwei 否则认为为wei
+			gasPrice = gweitowei(gasPrice)
+		} else {
+			gasPrice, _ = big.NewInt(0).SetString(tf.FeeRate, 0)
+		}
+
+	}
+
+	gasStruct := map[string]string{
+		"from":  tf.From,
+		"to":    tf.To,
+		"value": bigToHex(tf.Amount),
+	}
+	gasHex, _ := chainConf.EstimateGas(gasStruct) // 单位 wei hex
+
+	gas := hexToBigint(gasHex)
+
+	fee := weitoEth(gas.Div(gas, gasPrice))
+
+	_, err = db.GetCollection(chaindb, "transfertochains").InsertOne(context.Background(),
+		bson.M{"chain": chainSymbol, "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey,
+			"value": tf.Value, "fee": fee, "requestId": tf.RequestID})
+
+	if err != nil {
+		logger.Error("InsertOne transfertochains error", err)
+	}
+	// ERC20转账时 input 前缀：0xa9059cbb  中间：to address 后面：value  前缀：0xa9059cbb 是对 transfer(address,uint256) hash
+
+	// method := "transfer(address,uint256)"
+	// raw := crypto.Keccak256([]byte(method))[:4]
+	// hex := fmt.Sprintf("%x", raw)  a9059cbb
+
+	// 可参见 github.com\ethereum\go-ethereum\accounts\abi\abi.go Pack 方法
+	// github.com\ethereum\go-ethereum\accounts\abi\method.go  ID() 方法 Sig()方法的注释 （ Example function foo(uint32 a, int b) = "foo(uint32,int256)"）
+
+	// 此处只有 ERC20 转账 就不用go-ethereum ,直接写死
+
+	txData := map[string]interface{}{
+		"to":       tf.To,
+		"value":    bigToHex(tf.Amount),
+		"nonce":    bigToHex(tf.NonceBig),
+		"gasPrice": bigToHex(gasPrice),
+		"gas":      gasHex,
+		"data":     "",
+	}
+
+	res.Code = 0
+	res.Data = map[interface{}]interface{}{
+		"txData": txData,
+	}
+	return res
+
 }
 
 func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
@@ -1076,11 +1239,11 @@ func HexToAddr(hexAddr interface{}) string {
 
 }
 
-func stringToBigint(hex string) *big.Int {
+func hexToBigint(hex string) *big.Int {
 
-	base := 0
-	if strings.HasPrefix("0x", strings.ToLower(hex)) {
-		base = 16
+	base := 16
+	if strings.HasPrefix(strings.ToLower(hex), "0x") {
+		base = 0
 	}
 
 	n, _ := big.NewInt(0).SetString(hex, base)
@@ -1091,7 +1254,34 @@ func stringToBigint(hex string) *big.Int {
 
 func towei(number *big.Int) *big.Int {
 
-	wei := big.NewInt(1000000000000000000)
+	wei := big.NewInt(wei)
 
 	return number.Mul(number, wei)
+}
+
+func gweitowei(number *big.Int) *big.Int {
+
+	wei := big.NewInt(gwei)
+
+	return number.Mul(number, wei)
+}
+
+func weitoEth(number *big.Int) *big.Int {
+
+	wei := big.NewInt(wei)
+
+	return number.Div(number, wei)
+}
+
+func bigToHex(number *big.Int) string {
+
+	// hex := fmt.Sprintf("%x", number)
+
+	// fmt.Println("bigToHex", number.String(), hex)
+
+	return "0x" + number.Text(16)
+}
+
+func createERC20Input(to string, value *big.Int) {
+
 }

@@ -1,7 +1,9 @@
 package jrpc
 
 import (
+	"math/big"
 	"strconv"
+	"strings"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/ybbus/jsonrpc"
@@ -24,7 +26,7 @@ type ChainApi interface {
 	SubmitTransactionData(interface{}) (interface{}, error)
 
 	GetNonce(string) (string, error)
-	GetGas(string) (string, error)
+	GetGasPrice() (string, error)
 	EstimateGas(params ...interface{}) (string, error)
 }
 
@@ -138,9 +140,9 @@ func (u *api) GetNonce(address string) (string, error) {
 	return count, nil
 }
 
-func (u *api) GetGasPrice(address string) (string, error) {
+func (u *api) GetGasPrice() (string, error) {
 	var price string
-	err := u.getRpcClient().CallFor(&price, "eth_gasPrice", address, "latest")
+	err := u.getRpcClient().CallFor(&price, "eth_gasPrice")
 	if err != nil {
 		return "", err
 	}
@@ -157,4 +159,33 @@ func (u *api) EstimateGas(params ...interface{}) (string, error) {
 	}
 
 	return gas, nil
+}
+
+func (u *api) CreateERC20Input(to string, value *big.Int) string {
+
+	// 0xa9059cbb
+	to = strings.TrimRight(strings.ToLower(to), "0x")
+
+	v := u.BigToHex(value, false)
+
+	input := "0xa9059cbb" + ToLength(to, 64) + ToLength(v, 64)
+	return input
+}
+
+func (u *api) BigToHex(number *big.Int, prefix bool) string {
+
+	if prefix {
+		return "0x" + number.Text(16)
+	}
+	return number.Text(16)
+}
+
+func ToLength(str string, length int) string {
+	if len(str) > length {
+		return str
+	}
+	for len(str) < length {
+		str = "0" + str
+	}
+	return str
 }
