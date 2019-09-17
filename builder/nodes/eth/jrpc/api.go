@@ -28,6 +28,8 @@ type ChainApi interface {
 	GetNonce(string) (string, error)
 	GetGasPrice() (string, error)
 	EstimateGas(params ...interface{}) (string, error)
+
+	CreateERC20Input(to string, value *big.Int) string
 }
 
 type Response struct {
@@ -161,10 +163,20 @@ func (u *api) EstimateGas(params ...interface{}) (string, error) {
 	return gas, nil
 }
 
+//CreateERC20Input ERC20转账时 input 前缀：0xa9059cbb  中间：to address 后面：value  前缀：0xa9059cbb 是对 transfer(address,uint256) hash
+
+// method := "transfer(address,uint256)"
+// raw := crypto.Keccak256([]byte(method))[:4]
+// hex := fmt.Sprintf("%x", raw)  a9059cbb
+
+// 可参见 github.com\ethereum\go-ethereum\accounts\abi\abi.go Pack 方法
+// github.com\ethereum\go-ethereum\accounts\abi\method.go  ID() 方法 Sig()方法的注释 （ Example function foo(uint32 a, int b) = "foo(uint32,int256)"）
+
+// 此处只有 ERC20 转账 就不用go-ethereum ,直接写死
 func (u *api) CreateERC20Input(to string, value *big.Int) string {
 
 	// 0xa9059cbb
-	to = strings.TrimRight(strings.ToLower(to), "0x")
+	// to = strings.TrimRight(strings.ToLower(to), "0x")
 
 	v := u.BigToHex(value, false)
 
@@ -181,6 +193,8 @@ func (u *api) BigToHex(number *big.Int, prefix bool) string {
 }
 
 func ToLength(str string, length int) string {
+	str = strings.TrimPrefix(strings.ToLower(str), "0x")
+
 	if len(str) > length {
 		return str
 	}
