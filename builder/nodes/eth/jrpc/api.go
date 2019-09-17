@@ -192,14 +192,14 @@ func (u *api) BigToHex(number *big.Int, prefix bool) string {
 	return number.Text(16)
 }
 
+// ToLength 前缀补齐 0
 func ToLength(str string, length int) string {
 	str = strings.TrimPrefix(strings.ToLower(str), "0x")
 
 	if len(str) > length {
-		return str
+		return str[:length]
 	}
-	for len(str) < length {
-		str = "0" + str
-	}
+	str = strings.Repeat("0", length-len(str)) + str
+
 	return str
 }
