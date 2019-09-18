@@ -3,6 +3,7 @@ package main
 import (
 	"century/oasis/builder/nodes/eth/jrpc"
 	"century/oasis/builder/nodes/eth/models"
+	"century/oasis/builder/nodes/eth/web3"
 	"century/oasis/builder/nodes/util"
 	"encoding/hex"
 	"io/ioutil"
@@ -241,7 +242,7 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		tf.Coin = "ETH"
 
 		nonceChain, _ := chainConf.GetNonce(tf.From)
-		nonceChainInt := hexToBigint(nonceChain)
+		nonceChainInt := web3.HexToBigint(nonceChain)
 
 		if tf.Nonce != "" {
 			nonce, ok := big.NewInt(0).SetString(tf.Nonce, 0)
@@ -265,7 +266,7 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 
 		if tf.FeeRate == "" {
 			gasPriceA, _ := chainConf.GetGasPrice() // 单位 wei
-			gasPrice = hexToBigint(gasPriceA)
+			gasPrice = web3.HexToBigint(gasPriceA)
 			tf.FeeRate = gasPrice.String()
 		} else {
 			gasPriceD, err := decimal.NewFromString(tf.FeeRate)
@@ -278,7 +279,7 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 
 			gasPrice = big.NewInt(gasPriceD.IntPart())
 			if gasPrice.Cmp(big.NewInt(200)) < 1 { // 用户传的可能是wei gwei 小于200 认为是gwei 否则认为为wei
-				gasPrice = gweitowei(gasPrice)
+				gasPrice = web3.Gweitowei(gasPrice)
 			} else {
 				gasPrice, _ = big.NewInt(0).SetString(tf.FeeRate, 0)
 			}
@@ -288,13 +289,13 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		gasStruct := map[string]string{
 			"from":  tf.From,
 			"to":    tf.To,
-			"value": bigToHex(tf.Amount),
+			"value": web3.BigToHex(tf.Amount, true),
 		}
 		gasHex, _ := chainConf.EstimateGas(gasStruct) // 单位 wei hex
 
-		gas := hexToBigint(gasHex)
+		gas := web3.HexToBigint(gasHex)
 
-		fee := weitoEth(gas.Div(gas, gasPrice))
+		fee := web3.WeitoEther(gas.Div(gas, gasPrice))
 
 		_, err = db.GetCollection(chaindb, "transfertochains").InsertOne(context.Background(),
 			bson.M{"chain": chainSymbol, "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey,
@@ -306,9 +307,9 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 
 		txData := map[string]interface{}{
 			"to":       tf.To,
-			"value":    bigToHex(tf.Amount),
-			"nonce":    bigToHex(tf.NonceBig),
-			"gasPrice": bigToHex(gasPrice),
+			"value":    web3.BigToHex(tf.Amount, true),
+			"nonce":    web3.BigToHex(tf.NonceBig, true),
+			"gasPrice": web3.BigToHex(gasPrice, true),
 			"gas":      gasHex,
 			"data":     "",
 		}
@@ -367,7 +368,7 @@ func createERC20TransactionData(body []byte) *Result {
 	tf.Chain = chainSymbol
 
 	nonceChain, _ := chainConf.GetNonce(tf.From)
-	nonceChainInt := hexToBigint(nonceChain)
+	nonceChainInt := web3.HexToBigint(nonceChain)
 
 	if tf.Nonce != "" {
 		nonce, ok := big.NewInt(0).SetString(tf.Nonce, 0)
@@ -391,7 +392,7 @@ func createERC20TransactionData(body []byte) *Result {
 
 	if tf.FeeRate == "" {
 		gasPriceA, _ := chainConf.GetGasPrice() // 单位 wei
-		gasPrice = hexToBigint(gasPriceA)
+		gasPrice = web3.HexToBigint(gasPriceA)
 		tf.FeeRate = gasPrice.String()
 	} else {
 		gasPriceD, err := decimal.NewFromString(tf.FeeRate)
@@ -414,13 +415,13 @@ func createERC20TransactionData(body []byte) *Result {
 	gasStruct := map[string]string{
 		"from":  tf.From,
 		"to":    tf.To,
-		"value": bigToHex(tf.Amount),
+		"value": web3.BigToHex(tf.Amount, true),
 	}
 	gasHex, _ := chainConf.EstimateGas(gasStruct) // 单位 wei hex
 
-	gas := hexToBigint(gasHex)
+	gas := web3.HexToBigint(gasHex)
 
-	fee := weitoEth(gas.Div(gas, gasPrice))
+	fee := web3.WeitoEth(gas.Div(gas, gasPrice))
 
 	_, err = db.GetCollection(chaindb, "transfertochains").InsertOne(context.Background(),
 		bson.M{"chain": chainSymbol, "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey,
@@ -442,9 +443,9 @@ func createERC20TransactionData(body []byte) *Result {
 
 	txData := map[string]interface{}{
 		"to":       tf.To,
-		"value":    bigToHex(tf.Amount),
-		"nonce":    bigToHex(tf.NonceBig),
-		"gasPrice": bigToHex(gasPrice),
+		"value":    web3.BigToHex(tf.Amount),
+		"nonce":    web3.BigToHex(tf.NonceBig),
+		"gasPrice": web3.BigToHex(gasPrice),
 		"gas":      gasHex,
 		"data":     "",
 	}
@@ -848,9 +849,9 @@ func paserTx(msg []byte) []models.TransferFromChain {
 											Coin:  "ERC20",
 										}
 
-										tfc.From = HexToAddr(topics[1])
+										tfc.From = web3.HexToAddr(topics[1])
 
-										tfc.To = HexToAddr(topics[2])
+										tfc.To = web3.HexToAddr(topics[2])
 
 										tfc.TokenKey = tx.To
 										tfc.BlockHeight = tx.BlockHeight
@@ -1222,66 +1223,4 @@ func getSubscribeIds(address string) []string {
 		accountID = append(accountID, id)
 	}
 	return accountID
-}
-
-// HexToAddr 转化为40个长度的等长地址
-func HexToAddr(hexAddr interface{}) string {
-	switch addr := hexAddr.(type) {
-	case string:
-		str := strings.TrimRight(addr, "0x")
-
-		str = str[len(str)-40:]
-
-		return "0x" + strings.ToLower(str)
-	default:
-		return ""
-	}
-
-}
-
-func hexToBigint(hex string) *big.Int {
-
-	base := 16
-	if strings.HasPrefix(strings.ToLower(hex), "0x") {
-		base = 0
-	}
-
-	n, _ := big.NewInt(0).SetString(hex, base)
-
-	return n
-
-}
-
-func towei(number *big.Int) *big.Int {
-
-	wei := big.NewInt(wei)
-
-	return number.Mul(number, wei)
-}
-
-func gweitowei(number *big.Int) *big.Int {
-
-	wei := big.NewInt(gwei)
-
-	return number.Mul(number, wei)
-}
-
-func weitoEth(number *big.Int) *big.Int {
-
-	wei := big.NewInt(wei)
-
-	return number.Div(number, wei)
-}
-
-func bigToHex(number *big.Int) string {
-
-	// hex := fmt.Sprintf("%x", number)
-
-	// fmt.Println("bigToHex", number.String(), hex)
-
-	return "0x" + number.Text(16)
-}
-
-func createERC20Input(to string, value *big.Int) {
-
 }
