@@ -98,7 +98,8 @@ func initDB() {
 	db = util.NewDBs(viper.GetString("db.addr"))
 	err := db.GetConn()
 	if err != nil {
-		fmt.Println("connect mongo error", err)
+		logger.Error("connect mongo error", err)
+		panic(err)
 	}
 
 	commondb = viper.GetString("chain.commondb")
@@ -143,6 +144,7 @@ func initRouter() {
 	err := http.ListenAndServe(url, nil)
 	if err != nil {
 		fmt.Println("http listen failed.", err)
+		panic(err)
 	}
 }
 
@@ -421,7 +423,7 @@ func createERC20TransactionData(body []byte) *Result {
 
 	}
 
-	data := chainConf.CreateERC20Input(tf.To, tf.Amount)
+	data := web3.CreateERC20Input(tf.To, tf.Amount)
 
 	gasStruct := map[string]string{
 		"from":     strings.ToLower(tf.From),
@@ -813,7 +815,7 @@ func paserTx(msg []byte) []models.TransferFromChain {
 	for curor.Next(context.Background()) {
 		tx := models.Transaction{}
 		if err := curor.Decode(&tx); err != nil {
-			fmt.Println("get transferaction error", err)
+			logger.Error("get transferaction error", err)
 		}
 
 		if len(tx.Logs) > 0 {
@@ -936,7 +938,7 @@ func setSendTransactionTxid(requestID, txid string) {
 	ctx := context.Background()
 	result := db.GetCollection(commondb, "transfers").FindOne(ctx, where)
 	if result == nil {
-		fmt.Println("transfer not found!")
+		logger.Error("transfer not found!")
 		return
 	}
 	rawBytes, _ := result.DecodeBytes()
@@ -950,7 +952,7 @@ func setSendTransactionTxid(requestID, txid string) {
 	tc := db.GetCollection(chaindb, "transferstochains").FindOneAndUpdate(ctx, bson.M{"requestId": requestID}, updateStr1)
 
 	if tc.Err() != nil {
-		fmt.Println("error", tc.Err())
+		logger.Error("error", tc.Err())
 	}
 	tcdecode := models.TransferToChain{}
 	tc.Decode(&tcdecode)
@@ -972,7 +974,7 @@ func setSendTransactionError(requestID, msg string) {
 
 	exist := db.GetCollection(chaindb, "transfers").FindOne(ctx, where)
 	if exist == nil {
-		fmt.Println("transfer not found!")
+		logger.Error("transfer not found!")
 		return
 	}
 
@@ -985,7 +987,7 @@ func setSendTransactionError(requestID, msg string) {
 	tc := db.GetCollection(chaindb, "transferstochains").FindOneAndDelete(ctx, bson.M{"requestId": requestID})
 
 	if tc.Err() != nil {
-		fmt.Println("error", tc.Err())
+		logger.Error("error", tc.Err())
 	}
 
 	tcdecode := models.TransferToChain{}
@@ -1068,7 +1070,8 @@ func newBlockNotify(blockNumber string) {
 	op := options.Find().SetLimit(1024)
 	result, err := db.GetCollection(chaindb, "transferconfirmings").Find(ctx, bson.M{}, op)
 	if err != nil {
-		fmt.Println("transfer not found!")
+		logger.Error("transfer not found!")
+		return
 	}
 	if result.Next(ctx) {
 		ttc := models.TransferConfirming{}
@@ -1214,7 +1217,6 @@ func finish(address, inout string, tx map[string]interface{}) {
 }
 
 func sendNotify(key, accountID, address string, data interface{}) {
-	// fmt.Println("sendNotify", key, accountID, address, data)
 	// mongo 取出来的有时会有“ " ”
 	accountID = strings.Trim(accountID, "\"")
 	// op := options.FindOneAndUpdate().SetUpsert(true)
@@ -1223,7 +1225,6 @@ func sendNotify(key, accountID, address string, data interface{}) {
 	if err != nil {
 		logger.Error("通知 消息 存库失败", err)
 	}
-	// fmt.Println("insertresult", insertresult)
 }
 
 func addSubscribesHandle(address, account string) {
