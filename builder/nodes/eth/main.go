@@ -360,11 +360,9 @@ func createERC20TransactionData(body []byte) *Result {
 
 	tf.From = strings.ToLower(tf.From)
 	tf.To = strings.ToLower(tf.To)
-
 	tf.TokenKey = strings.ToLower(tf.TokenKey)
 
 	value64, err := decimal.NewFromString(tf.Value)
-
 	if err != nil {
 		res.Code = 40000
 		res.Msg = "Invalid amount" + err.Error()
@@ -372,7 +370,6 @@ func createERC20TransactionData(body []byte) *Result {
 	}
 
 	value := value64.Mul(decimal.New(wei, 0))
-
 	amount := big.NewInt(value.IntPart())
 
 	tf.Amount = amount
@@ -426,8 +423,8 @@ func createERC20TransactionData(body []byte) *Result {
 	data := web3.CreateERC20Input(tf.To, tf.Amount)
 
 	gasStruct := map[string]string{
-		"from":     strings.ToLower(tf.From),
-		"to":       strings.ToLower(tf.TokenKey),
+		"from":     tf.From,
+		"to":       tf.TokenKey,
 		"value":    web3.BigToHex(big.NewInt(0), true),
 		"nonce":    web3.BigToHex(tf.NonceBig, true),
 		"gasPrice": web3.BigToHex(gasPrice, true),
@@ -452,7 +449,10 @@ func createERC20TransactionData(body []byte) *Result {
 
 	gasHex, err := chainConf.EstimateGas(gasStruct) // 单位 wei hex
 	if err != nil {
-		fmt.Println("---------EstimateGas err", err, gasStruct)
+		logger.Error("---------EstimateGas err", err, gasStruct)
+		res.Code = 40000
+		res.Msg = "EstimateGas error" + err.Error()
+		return res
 	}
 
 	gas := web3.HexToBigint(gasHex)
@@ -477,7 +477,7 @@ func createERC20TransactionData(body []byte) *Result {
 	}
 
 	res.Code = 0
-	res.Data = map[interface{}]interface{}{
+	res.Data = map[string]interface{}{
 		"txData": txData,
 	}
 	return res
