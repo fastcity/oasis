@@ -7,8 +7,8 @@
 #### Installation
 
 1. [vct](https://github.com/abchain/fabric) 私有模式参见 [sdk](https://github.com/fastcity/oasis/tree/master/speed/config/dev/nodes)
-2. eth 待开始
-3. btc 待开始
+2. eth 已完成
+3. btc ... 剩余创建待签名事务
 
 #### Instructions
 
