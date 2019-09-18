@@ -816,7 +816,6 @@ func paserTx(msg []byte) []models.TransferFromChain {
 			fmt.Println("get transferaction error", err)
 		}
 
-		fmt.Println("len(tx.Logs)", len(tx.Logs))
 		if len(tx.Logs) > 0 {
 			for _, log := range tx.Logs {
 				// fmt.Println(`log["topics"].(type):`, reflect.TypeOf(log["topics"]), ` log["data"].(type)`, reflect.TypeOf(log["data"])) // primitive.A

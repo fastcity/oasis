@@ -74,7 +74,13 @@ func BigToHex(number *big.Int, prefix bool) string {
 	return number.Text(16)
 }
 
-// CreateERC20Input erc20 transfer 事件
+//CreateERC20Input ERC20转账时 input 前缀：0xa9059cbb  中间：to address 后面：value  前缀：0xa9059cbb 是对 transfer(address,uint256) hash
+// method := "transfer(address,uint256)"
+// raw := crypto.Keccak256([]byte(method))[:4]
+// hex := fmt.Sprintf("%x", raw)  a9059cbb
+// 可参见 github.com\ethereum\go-ethereum\accounts\abi\abi.go Pack 方法
+// github.com\ethereum\go-ethereum\accounts\abi\method.go  ID() 方法 Sig()方法的注释 （ Example function foo(uint32 a, int b) = "foo(uint32,int256)"）
+// 此处只有 ERC20 转账 就不用go-ethereum ,直接写死
 func CreateERC20Input(to string, value *big.Int) string {
 
 	// 0xa9059cbb
