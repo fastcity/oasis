@@ -210,6 +210,7 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 			tf.Value = r.PostFormValue("value")
 			tf.Nonce = r.PostFormValue("nonce")
 			tf.FeeRate = r.PostFormValue("feeRate")
+			tf.Coin = r.PostFormValue("coin")
 
 		default:
 			w.WriteHeader(406)
@@ -235,7 +236,10 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		tf.Chain = chainSymbol
 		if tf.Coin == "ERC20" {
 			b, _ := json.Marshal(tf)
-			res = createERC20TransactionData(b)
+			res1 := createERC20TransactionData(b)
+			res.Code = res1.Code
+			res.Data = res1.Data
+			res.Msg = res1.Msg
 			return
 		}
 		tf.TokenKey = "-"
@@ -352,6 +356,11 @@ func createERC20TransactionData(body []byte) *Result {
 		return res
 	}
 
+	tf.From = strings.ToLower(tf.From)
+	tf.To = strings.ToLower(tf.To)
+
+	tf.TokenKey = strings.ToLower(tf.TokenKey)
+
 	value64, err := decimal.NewFromString(tf.Value)
 
 	if err != nil {
@@ -405,23 +414,48 @@ func createERC20TransactionData(body []byte) *Result {
 
 		gasPrice = big.NewInt(gasPriceD.IntPart())
 		if gasPrice.Cmp(big.NewInt(200)) < 1 { // 用户传的可能是wei gwei 小于200 认为是gwei 否则认为为wei
-			gasPrice = gweitowei(gasPrice)
+			gasPrice = web3.Gweitowei(gasPrice)
 		} else {
 			gasPrice, _ = big.NewInt(0).SetString(tf.FeeRate, 0)
 		}
 
 	}
 
+	data := chainConf.CreateERC20Input(tf.To, tf.Amount)
+
 	gasStruct := map[string]string{
-		"from":  tf.From,
-		"to":    tf.To,
-		"value": web3.BigToHex(tf.Amount, true),
+		"from":     strings.ToLower(tf.From),
+		"to":       strings.ToLower(tf.TokenKey),
+		"value":    web3.BigToHex(big.NewInt(0), true),
+		"nonce":    web3.BigToHex(tf.NonceBig, true),
+		"gasPrice": web3.BigToHex(gasPrice, true),
+		"data":     data,
 	}
-	gasHex, _ := chainConf.EstimateGas(gasStruct) // 单位 wei hex
+
+	// gasStruct := map[string]string{
+	// 	"from":     "0xfef1f3dae07a41b00d785cf5af55c57f9145bca0",
+	// 	"to":       "0x73dac9535f97d95790b4626e8688ec7d31402c6a",
+	// 	"value":    "0x0",
+	// 	"nonce":    "0x44",
+	// 	"gasPrice": "0x3b9aca00",
+	// 	"data":     "0xa9059cbb0000000000000000000000000860123e5bc9bc6f40789e6f2929f7fdf35643ff000000000000000000000000000000000000000000000000016345785d8a0000",
+	// }
+
+	// 	data:0xa9059cbb00000000000000000000000x0860123e5bc9bc6f40789e6f2929f7fdf35643ff000000000000000000000000000000000000000000000000016345785d8a0000
+	// from:0xfef1f3dae07a41b00d785cf5af55c57f9145bca0
+	// gasPrice:0x3b9aca00
+	// nonce:0x42
+	// to:0x73dac9535f97d95790b4626e8688ec7d31402c6a
+	// value:0x0
+
+	gasHex, err := chainConf.EstimateGas(gasStruct) // 单位 wei hex
+	if err != nil {
+		fmt.Println("---------EstimateGas err", err, gasStruct)
+	}
 
 	gas := web3.HexToBigint(gasHex)
 
-	fee := web3.WeitoEth(gas.Div(gas, gasPrice))
+	fee := web3.WeitoEther(gas.Div(gas, gasPrice))
 
 	_, err = db.GetCollection(chaindb, "transfertochains").InsertOne(context.Background(),
 		bson.M{"chain": chainSymbol, "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey,
@@ -430,24 +464,14 @@ func createERC20TransactionData(body []byte) *Result {
 	if err != nil {
 		logger.Error("InsertOne transfertochains error", err)
 	}
-	// ERC20转账时 input 前缀：0xa9059cbb  中间：to address 后面：value  前缀：0xa9059cbb 是对 transfer(address,uint256) hash
-
-	// method := "transfer(address,uint256)"
-	// raw := crypto.Keccak256([]byte(method))[:4]
-	// hex := fmt.Sprintf("%x", raw)  a9059cbb
-
-	// 可参见 github.com\ethereum\go-ethereum\accounts\abi\abi.go Pack 方法
-	// github.com\ethereum\go-ethereum\accounts\abi\method.go  ID() 方法 Sig()方法的注释 （ Example function foo(uint32 a, int b) = "foo(uint32,int256)"）
-
-	// 此处只有 ERC20 转账 就不用go-ethereum ,直接写死
 
 	txData := map[string]interface{}{
 		"to":       tf.To,
-		"value":    web3.BigToHex(tf.Amount),
-		"nonce":    web3.BigToHex(tf.NonceBig),
-		"gasPrice": web3.BigToHex(gasPrice),
+		"value":    web3.BigToHex(tf.Amount, true),
+		"nonce":    web3.BigToHex(tf.NonceBig, true),
+		"gasPrice": web3.BigToHex(gasPrice, true),
 		"gas":      gasHex,
-		"data":     "",
+		"data":     data,
 	}
 
 	res.Code = 0
