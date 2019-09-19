@@ -135,6 +135,7 @@ func initRouter() {
 	http.HandleFunc("/api/v1/getBlockHeight", getBlockHeight)         //getBlockInfo  getBlockHeight
 	http.HandleFunc("/api/v1/getBlockInfo", getBlockInfo)             //getBlockInfo  getBlockHeight
 	http.HandleFunc("/api/v1/getBlockInfoByHash", getBlockInfoByHash) //getBlockInfo  getBlockHeight
+	http.HandleFunc("/api/v1/getFeeRate", getFeeRate)                 //getBlockInfo  getBlockHeight
 	http.HandleFunc("/api/v1/getBalance", getBalance)
 	http.HandleFunc("/api/v1/history", getHistory)
 
@@ -154,14 +155,6 @@ func JSON(w http.ResponseWriter, data interface{}) error {
 	return encoder.Encode(data)
 }
 
-func has(s []string, value string) bool {
-	for _, v := range s {
-		if v == value {
-			return true
-		}
-	}
-	return false
-}
 func escapeString(str, e string) {
 	strings.Replace(str, "+", "%2B", -1)
 }
@@ -552,6 +545,45 @@ func getBlockInfoByHash(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, string(b))
 }
 
+func getFeeRate(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("-------------- getFeeRate")
+
+	res := &Result{}
+	defer func(res *Result) {
+		w.Header().Add("Content-Type", "application/json")
+		ba, err := json.Marshal(res)
+		if err != nil {
+			res.Code = 40000
+			res.Msg = err.Error()
+		}
+		w.Write(ba)
+	}(res)
+
+	avg, err := chainConf.GetGasPrice()
+	if err != nil {
+		res.Code = 40000
+		res.Msg = err.Error()
+		return
+	}
+	avgb := web3.HexToBigint(avg)
+
+	avgRate := decimal.NewFromBigInt(avgb, 0).Div(decimal.New(1000000000, 0))
+
+	fastRate := avgRate.Mul(decimal.New(2, 0))
+	slowRate := avgRate.Div(decimal.New(2, 0))
+
+	res.Code = 0
+	res.Data = map[string]interface{}{
+		"data": map[string]interface{}{
+			"average": avgRate.IntPart(),
+			"fast":    fastRate.IntPart(),
+			"slow":    slowRate.IntPart(),
+		},
+	}
+
+	return
+}
+
 func getBlockHeight(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("-------------- getBlockHeight")
 	h, err := chainConf.GetBlockHeight()
@@ -767,7 +799,7 @@ func submitTx(body map[string]string) (res *Result) {
 		"txid": txid,
 	}
 
-	// setSendTransactionTxid(requestID, txid)
+	setSendTransactionTxid(requestID, txid)
 	return
 }
 

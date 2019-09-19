@@ -21,7 +21,7 @@ type ChainApi interface {
 
 	GetTransactionReceipt(string, interface{}) error
 	CreateTransactionData(interface{}, interface{}) (interface{}, error)
-	SubmitTransactionData(interface{}) (interface{}, error)
+	SubmitTransactionData(interface{}) (string, error)
 
 	GetNonce(string) (string, error)
 	GetGasPrice() (string, error)
@@ -119,11 +119,11 @@ func (u *api) CreateTransactionData(input, output interface{}) (interface{}, err
 	return tx, nil
 }
 
-func (u *api) SubmitTransactionData(sign interface{}) (interface{}, error) {
-	var txid interface{}
-	err := u.getRpcClient().CallFor(&txid, "sendrawtransaction", sign)
+func (u *api) SubmitTransactionData(sign interface{}) (string, error) {
+	var txid string
+	err := u.getRpcClient().CallFor(&txid, "eth_sendRawTransaction", sign)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	return txid, nil
 }
