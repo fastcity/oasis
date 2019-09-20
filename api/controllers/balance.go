@@ -26,9 +26,20 @@ func (balance *BalanceController) Get() {
 		return
 	}
 
+	tokenKey := balance.GetString("tokenKey", "-")
+
+	coin := balance.GetString("coin")
+	chain := "BTC"
+	if coin == "ERC20" || coin == "ETH" {
+		chain = "ETH"
+	}
+	if coin == "VCT_TOKEN" || coin == "VCT" {
+		chain = "ETH"
+	}
+
 	host := beego.AppConfig.String("builderHost")
-	port := beego.AppConfig.String("builderPort")
-	url := fmt.Sprintf("http://%s:%s/api/v1/getBalance?address=%s", host, port, addr)
+	port := beego.AppConfig.String(chain + "::builderPort")
+	url := fmt.Sprintf("http://%s:%s/api/v1/getBalance?address=%s&tokenKey=%s", host, port, addr, tokenKey)
 
 	req := httplib.Get(url)
 	b, _ := req.Bytes()

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/astaxie/beego"
@@ -37,6 +38,25 @@ func (tf *TransferController) CreateTransferTxData() {
 	transfer.CreateID = tf.GetString("createId")
 
 	// tf.Ctx.Input.RequestBody
+	if transfer.Coin == "" {
+		tf.Data["json"] = map[string]interface{}{
+			"code": 40001,
+			"msg":  "Coin empty,should enum: ['ERC20','ETH','VCT','BTC','VCT_TOKEN']",
+		}
+
+		return
+	}
+
+	chain := "BTC"
+	if transfer.Coin == "ERC20" || transfer.Coin == "ETH" {
+		chain = "ETH"
+	}
+	if transfer.Coin == "VCT_TOKEN" || transfer.Coin == "VCT" {
+		chain = "ETH"
+	}
+	if transfer.Chain == "" {
+		transfer.Chain = chain
+	}
 
 	insertresult, err := tf.DB.ConnCollection("transfers").InsertOne(context.Background(),
 		bson.M{"chain": transfer.Chain, "coin": transfer.Coin, "type": "transfer", "requestBody": transfer, "createId": transfer.CreateID})
@@ -70,8 +90,9 @@ func (tf *TransferController) CreateTransferTxData() {
 
 	// result, _ := ioutil.ReadAll(resp.Body)
 	// fmt.Println(string(result))
+
 	host := beego.AppConfig.String("builderHost")
-	port := beego.AppConfig.String("builderPort")
+	port := beego.AppConfig.String(chain + "::builderPort")
 	url := fmt.Sprintf("http://%s:%s/api/v1/createTransferTxData", host, port)
 
 	req := httplib.Post(url)
@@ -204,9 +225,22 @@ func (tf *TransferController) SubmitTx() {
 	// }
 
 	if sync {
+		raws, err := transfer.DecodeBytes()
+		if err != nil {
+			tf.Data["json"] = map[string]interface{}{
+				"code": 40001,
+				"msg":  err.Error(),
+			}
+
+			return
+		}
+		chain := raws.Lookup("chain").String()
+		fmt.Println("txType", chain)
+
+		chain = strings.Trim(chain, "\"")
 
 		host := beego.AppConfig.String("builderHost")
-		port := beego.AppConfig.String("builderPort")
+		port := beego.AppConfig.String(chain + "::builderPort")
 		url := fmt.Sprintf("http://%s:%s/api/v1/submitTxData", host, port)
 		reqBody := fmt.Sprintf("requestId=%s&signedRawTx=%s", requestID, signedRawTx)
 		req := httplib.Post(url)
@@ -214,7 +248,7 @@ func (tf *TransferController) SubmitTx() {
 		req.Header("Content-Type", "application/x-www-form-urlencoded")
 
 		var resp models.CommResp
-		err := req.ToJSON(&resp)
+		err = req.ToJSON(&resp)
 		if err != nil {
 			tf.Data["json"] = map[string]interface{}{
 				"code": 40001,
