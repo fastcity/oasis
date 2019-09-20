@@ -4,6 +4,8 @@ import (
 	"century/oasis/builder/nodes/btc/jrpc"
 	"century/oasis/builder/nodes/btc/models"
 	"century/oasis/builder/nodes/util"
+	"io/ioutil"
+	"math/big"
 
 	"github.com/shopspring/decimal"
 
@@ -161,114 +163,162 @@ func escapeString(str, e string) {
 
 func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 	// fmt.Println("createTransactionDataHandler------")
-	// type transfer struct {
-	// 	Chain  string
-	// 	Coin   string
-	// 	From   string `json:"from"`
-	// 	To     string
-	// 	Value  string
-	// 	Amount *big.Int
-	// 	// TokenKey  string
-	// 	RequestID string `json:"requestId"`
-	// }
-	// res := &Result{}
-	// defer func(res *Result) {
-	// 	w.Header().Add("Content-Type", "application/json")
-	// 	ba, err := json.Marshal(res)
-	// 	if err != nil {
-	// 		res.Code = 40000
-	// 		res.Msg = err.Error()
-	// 	}
-	// 	w.Write(ba)
-	// }(res)
+	type transfer struct {
+		Chain     string
+		Coin      string
+		From      string `json:"from"`
+		To        string
+		Value     string
+		Amount    *big.Int
+		TokenKey  string
+		RequestID string `json:"requestId"`
+	}
+	res := &Result{}
+	defer func(res *Result) {
+		w.Header().Add("Content-Type", "application/json")
+		ba, err := json.Marshal(res)
+		if err != nil {
+			res.Code = 40000
+			res.Msg = err.Error()
+		}
+		w.Write(ba)
+	}(res)
 
-	// if r.Method == http.MethodPost {
-	// 	fmt.Println("r.Header", r.Header)
-	// 	tf := &transfer{}
+	if r.Method == http.MethodPost {
+		fmt.Println("r.Header", r.Header)
+		tf := &transfer{}
 
-	// 	fmt.Println(`r.Header.Get("Content-Type")`, r.Header.Get("Content-Type"))
-	// 	switch r.Header.Get("Content-Type") {
-	// 	case "application/json":
-	// 		body, _ := ioutil.ReadAll(r.Body)
-	// 		err := json.Unmarshal(body, tf)
-	// 		if err != nil {
-	// 			res.Code = 40000
-	// 			res.Msg = err.Error()
-	// 			// ba, _ := json.Marshal(res)
-	// 			// w.Write(ba)
-	// 			return
-	// 		}
-	// 		// str, _ := jsonparser.GetString(body, "from")
-	// 		// fmt.Println("from", str)
-	// 	case "application/x-www-form-urlencoded":
-	// 		tf.From = r.PostFormValue("from")
-	// 		tf.To = r.PostFormValue("to")
-	// 		tf.TokenKey = r.PostFormValue("tokenKey")
-	// 		tf.RequestID = r.PostFormValue("requestId")
-	// 		tf.Value = r.PostFormValue("value")
+		fmt.Println(`r.Header.Get("Content-Type")`, r.Header.Get("Content-Type"))
+		switch r.Header.Get("Content-Type") {
+		case "application/json":
+			body, _ := ioutil.ReadAll(r.Body)
+			err := json.Unmarshal(body, tf)
+			if err != nil {
+				res.Code = 40000
+				res.Msg = err.Error()
+				// ba, _ := json.Marshal(res)
+				// w.Write(ba)
+				return
+			}
+			// str, _ := jsonparser.GetString(body, "from")
+			// fmt.Println("from", str)
+		case "application/x-www-form-urlencoded":
+			tf.From = r.PostFormValue("from")
+			tf.To = r.PostFormValue("to")
 
-	// 	default:
-	// 		w.WriteHeader(406)
-	// 		res.Code = 406
-	// 		res.Msg = "not support Content-Type"
-	// 		return
+			tf.RequestID = r.PostFormValue("requestId")
+			tf.Value = r.PostFormValue("value")
 
-	// 	}
-	// 	amount, ok := big.NewInt(0).SetString(tf.Value, 0)
+		default:
+			w.WriteHeader(406)
+			res.Code = 406
+			res.Msg = "not support Content-Type"
+			return
 
-	// 	if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
-	// 		res.Code = 40000
-	// 		res.Msg = "Invalid amount"
-	// 		return
-	// 	}
-	// 	tf.Amount = amount
+		}
+		tf.TokenKey = "-"
 
-	// 	tf.Coin = chainSymbol
-	// 		tf.TokenKey = "-"
+		value64, err := decimal.NewFromString(tf.Value)
 
-	// 	_, err := db.GetCollection(commondb, "transfertochains").InsertOne(context.Background(),
-	// 		bson.M{"chain": "VCT", "coin": tf.Coin, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey, "value": tf.Value, "requestId": tf.RequestID})
+		if err != nil {
+			res.Code = 40000
+			res.Msg = "Invalid amount" + err.Error()
+			return
+		}
 
-	// 	if err != nil {
-	// 		fmt.Println("InsertOne transfertochains error", err)
-	// 	}
-	// 	// fmt.Println("insertresult", insertresult)
+		// 1e8 10000000
+		value := value64.Mul(decimal.New(1e8, 0))
+		amount := big.NewInt(value.IntPart())
+		tf.Amount = amount
 
-	// 	// res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
-	// 	_, err = chainConf.CreateTransactionData(tf.From, tf.To, tf.TokenKey, tf.Amount)
-	// 	if err != nil {
-	// 		res.Code = 40000
-	// 		res.Msg = err.Error()
-	// 		// ba, _ := json.Marshal(res)
-	// 		// w.Write(ba)
-	// 		return
-	// 	}
-	// 	resp, err := chainConf.ToResponse()
-	// 	if err != nil {
-	// 		res.Code = 40000
-	// 		res.Msg = err.Error()
-	// 		// ba, _ := json.Marshal(res)
-	// 		// w.Write(ba)
-	// 		return
-	// 	}
-	// 	res.Code = 0
-	// 	res.Data = map[interface{}]interface{}{
-	// 		"txData": resp.Result,
-	// 	}
-	// 	fmt.Println("res", res)
+		// amount, ok := big.NewInt(0).SetString(tf.Value, 0)
 
-	// 	// w.Header().Add("Content-Type", "application/json")
-	// 	// ba, _ := json.Marshal(res)
-	// 	// w.Write(ba)
-	// 	// fmt.Fprintln(w, string(ba))
-	// 	return
-	// }
-	// w.WriteHeader(405)
-	// res.Code = 405
-	// res.Msg = "method not allow"
-	// // ba, _ := json.Marshal(res)
-	// // w.Write(ba)
-	// return
+		// if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
+		// 	res.Code = 40000
+		// 	res.Msg = "Invalid amount"
+		// 	return
+		// }
+		// tf.Amount = amount
+
+		tf.Coin = chainSymbol
+		tf.TokenKey = "-"
+
+		h, err := chainConf.GetBlockHeight()
+
+		where := bson.M{"blockHeight": bson.M{"$lt": h - 5}}
+
+		db.GetCollection(chaindb, "")
+
+		total := decimal.New(0, 0)
+
+		utxos, _err := db.GetCollection(chaindb, "utxos").Find(context.Background(), where)
+		if err != nil {
+			res.Code = 40000
+			res.Msg = "get utxos error:" + err.Error()
+			return
+		}
+		var inputs, ouputs map[string]interface{}
+		for utxos.Next(context.Background()) && total.Cmp(value) < 1 {
+			var ux map[string]interface{}
+
+			utxos.Decode(&ux)
+
+			v := ux["Value"].(int64)
+
+			total.Sub(decimal.New(v, 0))
+			inputs["txid"] = ux["txid"]
+			inputs["vout"] = ux["vout"]
+			inputs["address"] = ux["address"]
+			inputs["value"] = decimal.New(v, 0).Mul(decimal.New(1e8, 0))
+
+		}
+
+		ouputs["address"] = tf.From
+		ouputs["value"] = total
+
+		_, err = db.GetCollection(commondb, "transfertochains").InsertOne(context.Background(),
+			bson.M{"chain": chainSymbol, "coin": chainSymbol, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey, "value": tf.Value, "requestId": tf.RequestID})
+
+		if err != nil {
+			logger.Error("InsertOne transfertochains error", err)
+		}
+		// fmt.Println("insertresult", insertresult)
+
+		// res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
+		_, err = chainConf.CreateTransactionData(tf.From, tf.To, tf.TokenKey, tf.Amount)
+		if err != nil {
+			res.Code = 40000
+			res.Msg = err.Error()
+			// ba, _ := json.Marshal(res)
+			// w.Write(ba)
+			return
+		}
+		resp, err := chainConf.ToResponse()
+		if err != nil {
+			res.Code = 40000
+			res.Msg = err.Error()
+			// ba, _ := json.Marshal(res)
+			// w.Write(ba)
+			return
+		}
+		res.Code = 0
+		res.Data = map[interface{}]interface{}{
+			"txData": resp.Result,
+		}
+		fmt.Println("res", res)
+
+		// w.Header().Add("Content-Type", "application/json")
+		// ba, _ := json.Marshal(res)
+		// w.Write(ba)
+		// fmt.Fprintln(w, string(ba))
+		return
+	}
+	w.WriteHeader(405)
+	res.Code = 405
+	res.Msg = "method not allow"
+	// ba, _ := json.Marshal(res)
+	// w.Write(ba)
+	return
 }
 
 func submitTxDtaHandler(w http.ResponseWriter, r *http.Request) {
