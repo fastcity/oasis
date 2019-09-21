@@ -244,10 +244,15 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		tf.TokenKey = "-"
 
 		h, err := chainConf.GetBlockHeight()
-
 		where := bson.M{"blockHeight": bson.M{"$lt": h - 5}}
 
-		db.GetCollection(chaindb, "")
+		//btc的fee也是要经过计算得出的，而不是随便给的，它的计价方式是按照每笔交易的字节数收的，所以要先计算出你这比交易的fee，必须先计算出这笔交易可能的字节数，计算公式如下：
+
+		// 148 x inputNum + 34 x outputNum + 10 :输入utxo的个数 ，输出的个数（此处一对一转账，输出最多两个，一个找0 ，一个转账的地址）
+
+		// 算出字节数后，再乘以rate（Satoshi/byte）,rate可以网上找接口获取
+
+		// 提示：所以为了转账少花手续费，最好把utxo列表根据余额从大到小做个排序
 
 		total := decimal.New(0, 0)
 
@@ -1023,4 +1028,50 @@ func getSubscribeIds(address string) []string {
 		accountID = append(accountID, id)
 	}
 	return accountID
+}
+
+func createTxData(from, to string, value string) error {
+
+	//btc的fee也是要经过计算得出的，而不是随便给的，它的计价方式是按照每笔交易的字节数收的，所以要先计算出你这比交易的fee，必须先计算出这笔交易可能的字节数，计算公式如下：
+
+	// 148 x inputNum + 34 x outputNum + 10 :输入utxo的个数 ，输出的个数（此处一对一转账，输出最多两个，一个找0 ，一个转账的地址）
+
+	// 算出字节数后，再乘以rate（Satoshi/byte）,rate可以网上找接口获取
+
+	// 提示：所以为了转账少花手续费，最好把utxo列表根据余额从大到小做个排序
+
+	tvalue, err := decimal.NewFromString(value)
+	if err != nil {
+		return err
+	}
+
+	h, err := chainConf.GetBlockHeight()
+
+	where := bson.M{"blockHeight": bson.M{"$lt": h - 5}}
+	total := decimal.New(0, 0)
+
+	utxos, err := db.GetCollection(chaindb, "utxos").Find(context.Background(), where)
+	if err != nil {
+		return err
+	}
+
+	var inputs, ouputs map[string]interface{}
+	for utxos.Next(context.Background()) && total.Cmp(value) < 1 {
+		var ux map[string]interface{}
+
+		utxos.Decode(&ux)
+
+		v := ux["Value"].(int64)
+
+		total.Sub(decimal.New(v, 0))
+		inputs["txid"] = ux["txid"]
+		inputs["vout"] = ux["vout"]
+		inputs["address"] = ux["address"]
+		inputs["value"] = decimal.New(v, 0).Mul(decimal.New(1e8, 0))
+
+	}
+
+	ouputs["address"] = tf.From
+	ouputs["value"] = total
+
 }
