@@ -248,6 +248,10 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		inputs, ouputs, fee, err := createTxData(tf.From, tf.To, tf.Value, tf.feeRate)
 		if err != nil {
 			logger.Error("createTxData ---error ", err)
+			res.Code = 40000
+			res.Msg = err.Error()
+			return
+
 		}
 		logger.Debug("---------------------------", inputs, ouputs, fee)
 		// res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
@@ -255,7 +259,6 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			res.Code = 40000
 			res.Msg = err.Error()
-
 			return
 		}
 
