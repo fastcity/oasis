@@ -65,7 +65,7 @@
   - response
     + hash 带签名hash
     + requestId 创建事务的数据库存储id
-
+    --------------------------
     + vct
       ```
       {
