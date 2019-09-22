@@ -4,6 +4,7 @@ import (
 	"century/oasis/builder/nodes/btc/jrpc"
 	"century/oasis/builder/nodes/btc/models"
 	"century/oasis/builder/nodes/util"
+	"errors"
 	"io/ioutil"
 	"math/big"
 
@@ -43,6 +44,7 @@ var (
 	chainSymbol        = "BTC"
 	confirmedNumber    int64
 	logger             *zap.SugaredLogger
+	cong               float64 = 1e8
 )
 
 // Result 返回结果
@@ -171,6 +173,7 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		Value     string
 		Amount    *big.Int
 		TokenKey  string
+		feeRate   string
 		RequestID string `json:"requestId"`
 	}
 	res := &Result{}
@@ -208,6 +211,7 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 
 			tf.RequestID = r.PostFormValue("requestId")
 			tf.Value = r.PostFormValue("value")
+			tf.feeRate = r.PostFormValue("feeRate")
 
 		default:
 			w.WriteHeader(406)
@@ -231,55 +235,8 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		amount := big.NewInt(value.IntPart())
 		tf.Amount = amount
 
-		// amount, ok := big.NewInt(0).SetString(tf.Value, 0)
-
-		// if !ok || (amount.IsUint64() && amount.Uint64() == 0) {
-		// 	res.Code = 40000
-		// 	res.Msg = "Invalid amount"
-		// 	return
-		// }
-		// tf.Amount = amount
-
 		tf.Coin = chainSymbol
 		tf.TokenKey = "-"
-
-		h, err := chainConf.GetBlockHeight()
-		where := bson.M{"blockHeight": bson.M{"$lt": h - 5}}
-
-		//btc的fee也是要经过计算得出的，而不是随便给的，它的计价方式是按照每笔交易的字节数收的，所以要先计算出你这比交易的fee，必须先计算出这笔交易可能的字节数，计算公式如下：
-
-		// 148 x inputNum + 34 x outputNum + 10 :输入utxo的个数 ，输出的个数（此处一对一转账，输出最多两个，一个找0 ，一个转账的地址）
-
-		// 算出字节数后，再乘以rate（Satoshi/byte）,rate可以网上找接口获取
-
-		// 提示：所以为了转账少花手续费，最好把utxo列表根据余额从大到小做个排序
-
-		total := decimal.New(0, 0)
-
-		utxos, _err := db.GetCollection(chaindb, "utxos").Find(context.Background(), where)
-		if err != nil {
-			res.Code = 40000
-			res.Msg = "get utxos error:" + err.Error()
-			return
-		}
-		var inputs, ouputs map[string]interface{}
-		for utxos.Next(context.Background()) && total.Cmp(value) < 1 {
-			var ux map[string]interface{}
-
-			utxos.Decode(&ux)
-
-			v := ux["Value"].(int64)
-
-			total.Sub(decimal.New(v, 0))
-			inputs["txid"] = ux["txid"]
-			inputs["vout"] = ux["vout"]
-			inputs["address"] = ux["address"]
-			inputs["value"] = decimal.New(v, 0).Mul(decimal.New(1e8, 0))
-
-		}
-
-		ouputs["address"] = tf.From
-		ouputs["value"] = total
 
 		_, err = db.GetCollection(commondb, "transfertochains").InsertOne(context.Background(),
 			bson.M{"chain": chainSymbol, "coin": chainSymbol, "from": tf.From, "to": tf.To, "tokenKey": tf.TokenKey, "value": tf.Value, "requestId": tf.RequestID})
@@ -288,41 +245,33 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 			logger.Error("InsertOne transfertochains error", err)
 		}
 		// fmt.Println("insertresult", insertresult)
-
+		inputs, ouputs, fee, err := createTxData(tf.From, tf.To, tf.Value, tf.feeRate)
+		if err != nil {
+			logger.Error("createTxData ---error ", err)
+		}
+		logger.Debug("---------------------------", inputs, ouputs, fee)
 		// res, err := chainConf.CreateTransactionData(from, to, tokenKey, amount)
-		_, err = chainConf.CreateTransactionData(tf.From, tf.To, tf.TokenKey, tf.Amount)
+		hash, err := chainConf.CreateTransactionData(inputs, ouputs)
 		if err != nil {
 			res.Code = 40000
 			res.Msg = err.Error()
-			// ba, _ := json.Marshal(res)
-			// w.Write(ba)
+
 			return
 		}
-		resp, err := chainConf.ToResponse()
-		if err != nil {
-			res.Code = 40000
-			res.Msg = err.Error()
-			// ba, _ := json.Marshal(res)
-			// w.Write(ba)
-			return
-		}
+
 		res.Code = 0
 		res.Data = map[interface{}]interface{}{
-			"txData": resp.Result,
+			"txData": hash,
+			"fee":    fee,
 		}
-		fmt.Println("res", res)
+		logger.Debug("res", res)
 
-		// w.Header().Add("Content-Type", "application/json")
-		// ba, _ := json.Marshal(res)
-		// w.Write(ba)
-		// fmt.Fprintln(w, string(ba))
 		return
 	}
 	w.WriteHeader(405)
 	res.Code = 405
 	res.Msg = "method not allow"
-	// ba, _ := json.Marshal(res)
-	// w.Write(ba)
+
 	return
 }
 
@@ -1030,7 +979,8 @@ func getSubscribeIds(address string) []string {
 	return accountID
 }
 
-func createTxData(from, to string, value string) error {
+// btc fee 计算
+func createTxData(from, to, valueStr, feeRateStr string) ([]map[string]interface{}, map[string]interface{}, string, error) {
 
 	//btc的fee也是要经过计算得出的，而不是随便给的，它的计价方式是按照每笔交易的字节数收的，所以要先计算出你这比交易的fee，必须先计算出这笔交易可能的字节数，计算公式如下：
 
@@ -1040,38 +990,89 @@ func createTxData(from, to string, value string) error {
 
 	// 提示：所以为了转账少花手续费，最好把utxo列表根据余额从大到小做个排序
 
-	tvalue, err := decimal.NewFromString(value)
+	var (
+		base        int64 = 10
+		outputbase  int64 = 34
+		inputbase   int64 = 148
+		inputs      []map[string]interface{}
+		ouputs      = make(map[string]interface{})
+		congDecimal = decimal.NewFromFloat(cong)
+	)
+
+	value, err := decimal.NewFromString(valueStr)
 	if err != nil {
-		return err
+		return inputs, ouputs, "", err
+	}
+
+	feeRate, err := decimal.NewFromString(feeRateStr)
+	if err != nil {
+		return inputs, ouputs, "", err
 	}
 
 	h, err := chainConf.GetBlockHeight()
 
-	where := bson.M{"blockHeight": bson.M{"$lt": h - 5}}
-	total := decimal.New(0, 0)
+	where := bson.M{"blockHeight": bson.M{"$lt": h - 5}, "address": from}
 
-	utxos, err := db.GetCollection(chaindb, "utxos").Find(context.Background(), where)
+	// where := bson.M{"address": from}
+
+	op := options.Find().SetSort(bson.M{"value": -1})
+
+	// count, _ := db.GetCollection(chaindb, "utxos").CountDocuments(context.Background(), where)
+
+	utxos, err := db.GetCollection(chaindb, "utxos").Find(context.Background(), where, op)
 	if err != nil {
-		return err
+		return inputs, ouputs, "", err
 	}
 
-	var inputs, ouputs map[string]interface{}
-	for utxos.Next(context.Background()) && total.Cmp(value) < 1 {
+	oneIntFee := decimal.New(inputbase, 0).Mul(feeRate)
+	oneOutFee := decimal.New(outputbase, 0).Mul(feeRate)
+	transferValue := value.Mul(congDecimal)
+
+	totalIn := decimal.New(0, 0)
+
+	// 10*feeRate+34*feeRate 最少一个输出 ，最少的fee 220
+	fee := decimal.New(base, 0).Mul(feeRate).Add(oneOutFee)
+
+	ouputs[to] = value
+
+	// var inputs, ouputs map[string]interface{}
+	for utxos.Next(context.Background()) {
+		input := make(map[string]interface{})
+
 		var ux map[string]interface{}
-
 		utxos.Decode(&ux)
+		v := ux["value"].(float64)
+		vCong := decimal.NewFromFloat(v).Mul(congDecimal) // 转化为cong
 
-		v := ux["Value"].(int64)
+		totalIn = totalIn.Add(vCong)
 
-		total.Sub(decimal.New(v, 0))
-		inputs["txid"] = ux["txid"]
-		inputs["vout"] = ux["vout"]
-		inputs["address"] = ux["address"]
-		inputs["value"] = decimal.New(v, 0).Mul(decimal.New(1e8, 0))
+		fee = fee.Add(oneIntFee) // 计算一个输入 就 + oneIntFee
 
+		input["txid"] = ux["txid"]
+		input["vout"] = ux["vout"]
+
+		inputs = append(inputs, input)
+
+		totalOut := fee.Add(transferValue)
+
+		if totalIn.Cmp(totalOut) == 0 { // 一个输入 一个输出 相等 可以return
+			return inputs, ouputs, fee.String(), nil
+		}
+
+		if totalIn.Cmp(totalOut) > 0 { //  有找零 会多一个输出，
+
+			back := totalIn.Sub(totalOut) // 找零 totalIn - totalOut
+
+			if back.Cmp(oneOutFee) > 0 { // 找零 如果大于一个oneOutFee 也可以返回
+				fee = fee.Add(oneOutFee)
+				addr := ux["address"].(string)
+				totalOut = totalOut.Add(fee)
+				ouputs[addr] = totalIn.Sub(totalOut).Div(congDecimal) //转化为btc
+				return inputs, ouputs, fee.String(), nil
+			}
+		}
 	}
 
-	ouputs["address"] = tf.From
-	ouputs["value"] = total
+	return inputs, ouputs, fee.String(), errors.New("not enough utxo")
 
 }
