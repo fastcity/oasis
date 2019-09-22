@@ -265,9 +265,9 @@ func createTransactionDataHandler(w http.ResponseWriter, r *http.Request) {
 		res.Code = 0
 		res.Data = map[string]interface{}{
 			"txData": map[string]interface{}{
-				"hash": hash,
-				"input":inputs,
-				"output":ouputs
+				"hash":   hash,
+				"input":  inputs,
+				"output": ouputs,
 			},
 			"fee": fee,
 		}
