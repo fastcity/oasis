@@ -8,7 +8,7 @@
 
 1. [vct](https://github.com/abchain/fabric) 私有模式参见 [sdk](https://github.com/fastcity/oasis/tree/master/speed/config/dev/nodes)
 2. eth 已完成
-3. btc ... 剩余创建待签名事务
+3. btc 已完成
 
 #### Instructions
 
@@ -58,27 +58,70 @@
     + from
     + to
     + value
+    + chain ： BTC/VCT/ETH 中的一个
+    + coin ：  BTC/VCT/ETH/ERC20/VCT_TOKEN
+    + tokenKey ：coin 为  ERC20/VCT_TOKEN 时 填对应的token 如：ERC20为ERC20 合约地址
 
   - response
     + hash 带签名hash
     + requestId 创建事务的数据库存储id
-```
-{
-  "code": 0,
-  "data": {
-    "requestId": "5d68f77ffd54d4854a7ac833",
-    "txData": {
-      "hash": "C70EF7C6A794483DB2673FF8321F43B430F0EB8D724BB901E1EEA543DD0BE06F",
-      "promise": {
-        "Data": "91C8089F73EE10C23CE83A40D890BB83D7D5FCEFBF3F562C3DE12B46E0751091",
-        "Nonce": "FBB77108AD1663CF76F94D9A31ECD69E374BA0FE",
-        "txID": "pending"
-      },
-      "raw": "I::TOKEN.TRANSFER2:ChoKB0FCQ0hBSU4SD0F0b21pY0VuZXJneV92MRIGCJCLpOsFGhT7t3EIrRZjz3b5TZox7NaeN0ug/g==:CgEKEhYKFPmAE1K+T8V+y4ObshuwV2faNMOdGhYKFBJtq6Q46oTnxDwvVqMgDtZeNxs7"
-    }
-  }
-}
-```
+
+    + vct
+      ```
+      {
+        "code": 0,
+        "data": {
+          "requestId": "5d68f77ffd54d4854a7ac833",
+          "txData": {
+            "hash": "C70EF7C6A794483DB2673FF8321F43B430F0EB8D724BB901E1EEA543DD0BE06F",
+            "promise": {
+              "Data": "91C8089F73EE10C23CE83A40D890BB83D7D5FCEFBF3F562C3DE12B46E0751091",
+              "Nonce": "FBB77108AD1663CF76F94D9A31ECD69E374BA0FE",
+              "txID": "pending"
+            },
+            "raw":      "I::TOKEN.TRANSFER2:ChoKB0FCQ0hBSU4SD0F0b21pY0VuZXJneV92MRIGCJCLpOsFGhT7t3EIrRZjz3b5TZox    7NaeN0ug/g==:CgEKEhYKFPmAE1K+T8V+y4ObshuwV2faNMOdGhYKFBJtq6Q46oTnxDwvVqMgDtZeNxs7"
+          }
+        }
+      }
+      ```
+      + btc
+      ```
+      {
+      	"code": 0,
+      	"data": {
+      		"requestId": "5d68f77ffd54d4854a7ac833",
+      		"txData": {
+      			"hash":       "0200000001dbfc395f2c1d6b2db1e233db4fa5132e1b6aec3037d60992ca678749a5a12d020000000000fff      fffff0280969800000000001976a91417e3d2fd4bd20bc818b5371b65e262173af1856488acf65a481100000      0001976a914ecd0f99322d451729b2eaea81f064e69d4a75ab788ac00000000",
+      			"input": [{
+      				"txid": "8529fd31f3b6e07e921452a672cbf488c735fd1c4ba9b5108ba3640fb2213a81",
+      				"vout": 1
+      			}],
+      			"output": {
+      				"mkNN34ovAK6ZurH2vmdLksTzDR6TmoQQRf": 1.48366258
+      			},
+      			"fee": "0.01"
+      		}
+      	}
+      }
+      ```
+       + eth (需要对整个txdata 签名)
+      ```
+      {
+        "code": 0,
+        "data": {
+            "txData": {
+                "to": "0x0860123e5bc9bc6f40789e6f2929f7fdf35643ff",
+                "value": "0x16345785d8a0000",
+                "nonce": "0x4d",
+                "gasPrice": "0x3b9aca00",
+                "gas": "0x5208",
+                "data": ""
+            },
+            "requestId": "5d8786036864a3003908e167",
+            "fee": "0.000021"
+        }
+      }
+      ```
 
 ##### api/v1/submitTx 提交事务 【POST】
   - 请求参数

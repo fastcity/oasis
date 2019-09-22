@@ -16,7 +16,7 @@ api:
     port: 7799
 
 db:
-    addr: "127.0.0.1:27017"
+    addr: "127.0.0.1:27018"
 
 kafka:
     service:
